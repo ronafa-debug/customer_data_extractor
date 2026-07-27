@@ -1,0 +1,22 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Node (로컬 테스트·serve 용)
+node_modules/
+package.json
+package-lock.json
+npm-debug.log*
+
+# Local artifacts
+*.tmp
+.cache/
+dist/
