@@ -224,6 +224,52 @@ assertEq(
 );
 assertEq(naverCustomers[0].products[0].quantity, 5, "네이버 수량");
 
+console.log("\n=== 쿠팡 주소 중복 제거 ===");
+const addr = "대구광역시 달서구 구마로 238 세현빌딩 2층 광피씨방 ( 송현동 )";
+const coupangDupWb = {
+  fileName: "coupang2.xlsx",
+  sheets: [
+    {
+      name: "Sheet1",
+      data: [
+        [
+          "주문번호",
+          "수취인이름",
+          "수취인전화번호",
+          "우편번호",
+          "수취인주소",
+          "상세주소",
+          "노출상품명",
+          "구매수",
+          "배송메시지",
+        ],
+        [
+          "1",
+          "이주언",
+          "0502-4337-6694",
+          "42737",
+          addr,
+          addr,
+          "한입 찰도그 900g",
+          "1",
+          "꼭..매장안 직원에게 전달해주세요~",
+        ],
+      ],
+    },
+  ],
+};
+const coupangDup = new CoupangParser().parse(coupangDupWb);
+assertEq(coupangDup.length, 1, "쿠팡 중복주소 고객 1명");
+assertEq(
+  coupangDup[0].fullAddress,
+  `42737 ${addr}`,
+  "주소가 한 번만 출력됨"
+);
+assert(
+  !coupangDup[0].address.includes(`${addr} ${addr}`),
+  "address 필드에 중복 결합 없음"
+);
+
 console.log("\n=== Test 6: 미지원/손상 케이스 메시지 ===");
 try {
   ParserFactory.detect({ sheets: [{ name: "a", data: [["x", "y"]] }] });

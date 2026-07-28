@@ -83,8 +83,8 @@ export class NaverParser extends BaseParser {
       const baseAddr = cols.address >= 0 ? this.cell(row[cols.address]) : "";
       const detailAddr =
         cols.addressDetail >= 0 ? this.cell(row[cols.addressDetail]) : "";
-      // 기본주소 + 상세주소를 한 줄로 합친다
-      const address = [baseAddr, detailAddr].filter(Boolean).join(" ");
+      // 기본주소 + 상세주소 (중복 시 한 번만)
+      const address = this.joinAddressParts(baseAddr, detailAddr);
       const deliveryMessage = cols.message >= 0 ? this.cell(row[cols.message]) : "";
       const productName = this.cell(row[cols.product]);
       const quantity = cols.qty >= 0 ? this.parseQuantity(row[cols.qty]) : 1;
@@ -137,6 +137,20 @@ export class NaverParser extends BaseParser {
    * @param {any[]} headerRow
    */
   #mapColumns(headerRow) {
+    let address = this.findColumnIndex(headerRow, [
+      "기본배송지",
+      "수취인주소",
+      "배송지주소",
+    ]);
+    if (address < 0) {
+      address = this.findColumnIndex(headerRow, ["배송지", "주소"]);
+    }
+    const addressDetail = this.findColumnIndex(
+      headerRow,
+      ["상세배송지", "상세주소", "배송지상세", "수취인상세주소"],
+      [address]
+    );
+
     return {
       name: this.findColumnIndex(headerRow, [
         "수취인명",
@@ -153,17 +167,8 @@ export class NaverParser extends BaseParser {
         "휴대폰번호",
       ]),
       zip: this.findColumnIndex(headerRow, ["우편번호", "수취인우편번호"]),
-      address: this.findColumnIndex(headerRow, [
-        "기본배송지",
-        "배송지",
-        "주소",
-        "수취인주소",
-      ]),
-      addressDetail: this.findColumnIndex(headerRow, [
-        "상세배송지",
-        "상세주소",
-        "배송지상세",
-      ]),
+      address,
+      addressDetail,
       product: this.findColumnIndex(headerRow, ["상품명", "상품이름"]),
       qty: this.findColumnIndex(headerRow, ["수량", "주문수량", "구매수량"]),
       message: this.findColumnIndex(headerRow, [

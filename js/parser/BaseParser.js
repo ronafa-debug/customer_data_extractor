@@ -34,23 +34,30 @@ export class BaseParser {
    * 헤더 행에서 컬럼 인덱스를 찾는다.
    * @param {any[]} headerRow
    * @param {string[]} candidates
+   * @param {number[]} [excludeIndexes] 이미 다른 필드로 배정된 컬럼
    * @returns {number}
    */
-  findColumnIndex(headerRow, candidates) {
+  findColumnIndex(headerRow, candidates, excludeIndexes = []) {
+    const excluded = new Set(excludeIndexes.filter((i) => i >= 0));
     const headers = (headerRow || []).map((h) =>
       String(h || "").replace(/\s+/g, "").toLowerCase()
     );
 
     for (const candidate of candidates) {
       const key = candidate.replace(/\s+/g, "").toLowerCase();
-      const exact = headers.findIndex((h) => h === key);
+      const exact = headers.findIndex(
+        (h, i) => !excluded.has(i) && h === key
+      );
       if (exact >= 0) return exact;
     }
 
     for (const candidate of candidates) {
       const key = candidate.replace(/\s+/g, "").toLowerCase();
       const partial = headers.findIndex(
-        (h) => h && (h.includes(key) || key.includes(h))
+        (h, i) =>
+          !excluded.has(i) &&
+          h &&
+          (h.includes(key) || key.includes(h))
       );
       if (partial >= 0) return partial;
     }
@@ -65,6 +72,30 @@ export class BaseParser {
   cell(value) {
     if (value == null) return "";
     return String(value).replace(/\r\n/g, "\n").trim();
+  }
+
+  /**
+   * 기본주소 + 상세주소를 한 줄로 합친다.
+   * 동일·포함 관계면 중복을 제거한다.
+   * @param {string} base
+   * @param {string} detail
+   * @returns {string}
+   */
+  joinAddressParts(base, detail) {
+    const normalize = (value) =>
+      String(value || "")
+        .replace(/[\r\n]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const a = normalize(base);
+    const b = normalize(detail);
+    if (!a) return b;
+    if (!b) return a;
+    if (a === b) return a;
+    if (a.includes(b)) return a;
+    if (b.includes(a)) return b;
+    return `${a} ${b}`;
   }
 
   /**

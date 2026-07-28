@@ -80,7 +80,7 @@ export class CoupangParser extends BaseParser {
       const zipcode = cols.zip >= 0 ? this.cell(row[cols.zip]) : "";
       const addr1 = cols.address >= 0 ? this.cell(row[cols.address]) : "";
       const addr2 = cols.addressDetail >= 0 ? this.cell(row[cols.addressDetail]) : "";
-      const address = [addr1, addr2].filter(Boolean).join(" ");
+      const address = this.joinAddressParts(addr1, addr2);
       const deliveryMessage = cols.message >= 0 ? this.cell(row[cols.message]) : "";
       const productName = this.cell(row[cols.product]);
       const quantity = cols.qty >= 0 ? this.parseQuantity(row[cols.qty]) : 1;
@@ -122,6 +122,22 @@ export class CoupangParser extends BaseParser {
    * @param {any[]} headerRow
    */
   #mapColumns(headerRow) {
+    let address = this.findColumnIndex(headerRow, [
+      "수취인주소",
+      "수취인 주소",
+      "배송지주소",
+      "수취인기본주소",
+      "기본주소",
+    ]);
+    if (address < 0) {
+      address = this.findColumnIndex(headerRow, ["주소"]);
+    }
+    const addressDetail = this.findColumnIndex(
+      headerRow,
+      ["수취인주소상세", "상세주소", "주소상세", "수취인상세주소"],
+      [address]
+    );
+
     return {
       name: this.findColumnIndex(headerRow, [
         "수취인이름",
@@ -139,18 +155,13 @@ export class CoupangParser extends BaseParser {
         "전화번호",
         "휴대폰",
       ]),
-      zip: this.findColumnIndex(headerRow, ["우편번호", "수취인우편번호", "우편 번호"]),
-      address: this.findColumnIndex(headerRow, [
-        "수취인주소",
-        "수취인 주소",
-        "배송지주소",
-        "주소",
+      zip: this.findColumnIndex(headerRow, [
+        "우편번호",
+        "수취인우편번호",
+        "우편 번호",
       ]),
-      addressDetail: this.findColumnIndex(headerRow, [
-        "수취인주소상세",
-        "상세주소",
-        "주소상세",
-      ]),
+      address,
+      addressDetail,
       product: this.findColumnIndex(headerRow, [
         "노출상품명",
         "등록상품명",
