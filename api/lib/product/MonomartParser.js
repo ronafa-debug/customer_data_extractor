@@ -43,6 +43,8 @@ export class MonomartParser extends BaseProductParser {
    * @param {string} url
    */
   async parse(page, url) {
+    const fast = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
     // 분석/광고만 차단 (이미지·스크립트는 유지해 DOM 파싱이 깨지지 않게)
     await page
       .route("**/*", (route) => {
@@ -60,27 +62,34 @@ export class MonomartParser extends BaseProductParser {
       })
       .catch(() => {});
 
-    // networkidle 대신 load — 트래커 대기 없이 본문 로드까지
-    await page.goto(url, { waitUntil: "load", timeout: 35000 });
+    // Vercel은 콜드스타트+Chromium으로 시간이 촉박 → domcontentloaded로 단축
+    await page.goto(url, {
+      waitUntil: fast ? "domcontentloaded" : "load",
+      timeout: fast ? 22000 : 35000,
+    });
     await page.waitForSelector("body", { timeout: 5000 }).catch(() => {});
     await page
       .waitForSelector(
         ".item_detail_tit, .goods_name, .js_goods_detail_infotext, .view_box0",
-        { timeout: 10000 }
+        { timeout: fast ? 7000 : 10000 }
       )
       .catch(() => {});
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, fast ? 100 : 200));
 
     await this.dismissOverlays(page);
-    try {
-      await this.scrollToBottom(page);
-    } catch (err) {
-      console.error("[MonomartParser] scroll retry:", err?.message);
-      await page.waitForLoadState("load").catch(() => {});
-      await new Promise((r) => setTimeout(r, 400));
-      await this.scrollToBottom(page).catch(() => {});
+
+    // 전체 페이지 스크롤은 로컬에서만 — 서버리스는 상세 영역 스크롤만으로 충분
+    if (!fast) {
+      try {
+        await this.scrollToBottom(page);
+      } catch (err) {
+        console.error("[MonomartParser] scroll retry:", err?.message);
+        await page.waitForLoadState("load").catch(() => {});
+        await new Promise((r) => setTimeout(r, 400));
+        await this.scrollToBottom(page).catch(() => {});
+      }
+      await this.dismissOverlays(page);
     }
-    await this.dismissOverlays(page);
 
     const name = await this.#extractName(page);
     const { locator: mainImageLocator, candidates: mainImageSrcCandidates } =
@@ -244,48 +253,57 @@ export class MonomartParser extends BaseProductParser {
       await root.scrollIntoViewIfNeeded().catch(() => {});
 
       // lazy src 강제 + 빠른 내부 스크롤 (mouse.wheel 반복보다 짧음)
-      await root.evaluate(async (el) => {
-        const imgs = [...el.querySelectorAll("img")];
-        for (const img of imgs) {
-          const ds =
-            img.getAttribute("data-src") ||
-            img.getAttribute("data-original") ||
-            img.getAttribute("data-lazy") ||
-            img.getAttribute("data-lazy-src");
-          if (ds && (!img.src || img.src.startsWith("data:"))) {
-            img.src = ds;
+      const fast = Boolean(
+        process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+      );
+      await root.evaluate(
+        async (el, opts) => {
+          const imgs = [...el.querySelectorAll("img")];
+          for (const img of imgs) {
+            const ds =
+              img.getAttribute("data-src") ||
+              img.getAttribute("data-original") ||
+              img.getAttribute("data-lazy") ||
+              img.getAttribute("data-lazy-src");
+            if (ds && (!img.src || img.src.startsWith("data:"))) {
+              img.src = ds;
+            }
+            img.loading = "eager";
+            img.classList.remove("gd_image_lazy");
           }
-          img.loading = "eager";
-          img.classList.remove("gd_image_lazy");
-        }
 
-        const maxY = Math.min(
-          (el.scrollHeight || document.body.scrollHeight) + 400,
-          8000
-        );
-        for (let y = 0; y < maxY; y += 700) {
-          window.scrollTo(0, y);
-          await new Promise((r) => setTimeout(r, 25));
-        }
-        el.scrollIntoView({ block: "start", inline: "nearest" });
+          const maxY = Math.min(
+            (el.scrollHeight || document.body.scrollHeight) + 400,
+            opts.fast ? 4500 : 8000
+          );
+          const step = opts.fast ? 900 : 700;
+          const pause = opts.fast ? 15 : 25;
+          for (let y = 0; y < maxY; y += step) {
+            window.scrollTo(0, y);
+            await new Promise((r) => setTimeout(r, pause));
+          }
+          el.scrollIntoView({ block: "start", inline: "nearest" });
 
-        await Promise.all(
-          imgs.slice(0, 24).map(
-            (img) =>
-              new Promise((resolve) => {
-                if (img.complete && img.naturalWidth > 0) {
-                  resolve();
-                  return;
-                }
-                img.onload = () => resolve();
-                img.onerror = () => resolve();
-                setTimeout(resolve, 900);
-              })
-          )
-        );
-      });
+          const waitMs = opts.fast ? 500 : 900;
+          await Promise.all(
+            imgs.slice(0, opts.fast ? 16 : 24).map(
+              (img) =>
+                new Promise((resolve) => {
+                  if (img.complete && img.naturalWidth > 0) {
+                    resolve();
+                    return;
+                  }
+                  img.onload = () => resolve();
+                  img.onerror = () => resolve();
+                  setTimeout(resolve, waitMs);
+                })
+            )
+          );
+        },
+        { fast }
+      );
 
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, fast ? 50 : 100));
 
       const rankedSrcs = await root.evaluate(
         (el, opts) => {

@@ -2,6 +2,7 @@
  * Playwright 브라우저 런처 (로컬 / Vercel)
  * 로컬에서는 브라우저 인스턴스를 재사용해 콜드스타트를 줄인다.
  */
+import path from "node:path";
 
 /** @type {import('playwright').Browser | import('playwright-core').Browser | null} */
 let sharedLocalBrowser = null;
@@ -32,12 +33,26 @@ export async function launchBrowser() {
     }
   }
 
+  // Vercel / Lambda: @sparticuz/chromium
+  // https://github.com/Sparticuz/chromium
   const { chromium: playwrightChromium } = await import("playwright-core");
   const chromium = (await import("@sparticuz/chromium")).default;
 
+  if (typeof chromium.setGraphicsMode === "function") {
+    chromium.setGraphicsMode(false);
+  }
+
+  const executablePath = await chromium.executablePath();
+  const execDir = path.dirname(executablePath);
+  // libnspr4 등 공유 라이브러리 경로 (Vercel Linux)
+  const prevLd = process.env.LD_LIBRARY_PATH || "";
+  process.env.LD_LIBRARY_PATH = prevLd
+    ? `${execDir}:${prevLd}`
+    : execDir;
+
   return playwrightChromium.launch({
     args: chromium.args,
-    executablePath: await chromium.executablePath(),
+    executablePath,
     headless: true,
   });
 }

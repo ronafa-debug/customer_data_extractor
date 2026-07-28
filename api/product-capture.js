@@ -16,6 +16,12 @@ import {
   toBase64,
 } from "./lib/images.js";
 
+/** Vercel Serverless 설정 */
+export const config = {
+  maxDuration: 60,
+  memory: 1024,
+};
+
 /** @typedef {{
  *   id: string,
  *   label: string,
@@ -76,8 +82,11 @@ export default async function handler(req, res) {
   try {
     const parser = detect(url);
     browser = await launchBrowser();
+    const fast = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
     page = await browser.newPage({
-      viewport: { width: 1280, height: 1800 },
+      viewport: fast
+        ? { width: 390, height: 844 }
+        : { width: 1280, height: 1800 },
       userAgent:
         "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     });
@@ -143,8 +152,10 @@ export default async function handler(req, res) {
         let raw = null;
         let bestScore = -Infinity;
 
+        // DOM 역순(스펙 포장컷 우선) 상위 후보만 점수 — Vercel 타임아웃 완화
+        const toScore = srcList.slice(0, 3);
         const scored = await Promise.all(
-          srcList.map(async (src) => {
+          toScore.map(async (src) => {
             try {
               if (rejectSrc.test(src)) return null;
               const resp = await page.request.get(src);
@@ -173,6 +184,26 @@ export default async function handler(req, res) {
           if (item.score > bestScore) {
             bestScore = item.score;
             raw = item.buf;
+          }
+        }
+
+        if ((!raw || bestScore < 40) && srcList.length > 3) {
+          for (const src of srcList.slice(3)) {
+            try {
+              if (rejectSrc.test(src)) continue;
+              const resp = await page.request.get(src);
+              if (!resp.ok()) continue;
+              const buf = Buffer.from(await resp.body());
+              if (await looksLikePolicyBanner(buf)) continue;
+              const score = await scorePackageShot(buf);
+              if (score > bestScore) {
+                bestScore = score;
+                raw = buf;
+              }
+              if (bestScore >= 70) break;
+            } catch {
+              /* next */
+            }
           }
         }
 
@@ -372,16 +403,21 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error("[product-capture]", err);
     const message = err?.message || "이미지 생성에 실패했습니다.";
+    const isTimeout = /timeout|Timeout|exceeded/i.test(message);
     const status = message.includes("지원하지 않는")
       ? 400
       : message.includes("불러올 수 없")
         ? 502
-        : 500;
+        : isTimeout
+          ? 504
+          : 500;
     res.status(status).json({
       success: false,
-      message: /지원하지 않는|상품 정보|URL/.test(message)
-        ? message
-        : "이미지 생성에 실패했습니다.",
+      message: isTimeout
+        ? "서버 처리 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
+        : /지원하지 않는|상품 정보|URL/.test(message)
+          ? message
+          : "이미지 생성에 실패했습니다.",
     });
   } finally {
     if (page) {

@@ -35,10 +35,25 @@ export async function captureProduct(url) {
 
   let payload;
   try {
-    payload = await response.json();
+    const text = await response.text();
+    if (
+      response.status === 504 ||
+      /FUNCTION_INVOCATION_TIMEOUT|TIMEOUT/i.test(text)
+    ) {
+      throw new Error(
+        "서버 처리 시간이 초과되었습니다. 잠시 후 다시 시도해주세요. (첫 요청은 Chromium 준비로 더 걸릴 수 있습니다)"
+      );
+    }
+    try {
+      payload = JSON.parse(text);
+    } catch (err) {
+      console.error("[CaptureService] json:", err, text.slice(0, 200));
+      throw new Error("이미지 생성에 실패했습니다.");
+    }
   } catch (err) {
-    console.error("[CaptureService] json:", err);
-    throw new Error("이미지 생성에 실패했습니다.");
+    if (err?.message?.includes("처리 시간")) throw err;
+    console.error("[CaptureService] read:", err);
+    throw new Error(err?.message || "이미지 생성에 실패했습니다.");
   }
 
   if (!response.ok || !payload?.success) {
@@ -48,9 +63,11 @@ export async function captureProduct(url) {
     }
     const message =
       payload?.message ||
-      (response.status === 400
-        ? "상품 정보를 찾을 수 없습니다."
-        : "이미지 생성에 실패했습니다.");
+      (response.status === 504
+        ? "서버 처리 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
+        : response.status === 400
+          ? "상품 정보를 찾을 수 없습니다."
+          : "이미지 생성에 실패했습니다.");
     console.error("[CaptureService] api error:", payload);
     throw new Error(message);
   }

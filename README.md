@@ -144,7 +144,7 @@ npm run dev:local         # http://localhost:5151
 2. Framework Preset: Other, Node.js 20+  
 3. 배포 후 `/api/product-capture` 동작  
 
-> Hobby 플랜은 함수 실행 시간 제한으로 콜드스타트 시 타임아웃이 날 수 있습니다. 필요 시 Pro 또는 `maxDuration` 조정.
+> Hobby 플랜은 함수 실행 시간 최대 60초입니다. Chromium 콜드스타트 시 첫 요청이 타임아웃될 수 있으니, 실패 시 한 번 더 시도하세요. 필요 시 Pro 플랜 또는 `maxDuration`을 조정하세요.
 
 ---
 
