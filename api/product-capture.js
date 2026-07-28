@@ -151,33 +151,49 @@ export default async function handler(req, res) {
         /** @type {Buffer | null} */
         let raw = null;
         let bestScore = -Infinity;
+        /** 완제품 포장으로 볼 최소 점수 (소스 그릇·연출컷 배제) */
+        const PACKAGE_MIN = 55;
+        /** 이 미만이면 음식 연출로 보고 1차 후보에서 제외 */
+        const FOOD_MAX = 44;
 
-        // DOM 역순(스펙 포장컷 우선) 상위 후보만 점수 — Vercel 타임아웃 완화
-        const toScore = srcList.slice(0, 3);
-        const scored = await Promise.all(
-          toScore.map(async (src) => {
-            try {
-              if (rejectSrc.test(src)) return null;
-              const resp = await page.request.get(src);
-              if (!resp.ok()) return null;
-              const buf = Buffer.from(await resp.body());
-              if (await looksLikePolicyBanner(buf)) {
-                console.error("[product-capture] skip policy banner:", src);
-                return null;
-              }
-              const score = await scorePackageShot(buf);
+        /**
+         * @param {string} src
+         * @returns {Promise<{ src: string, buf: Buffer, score: number } | null>}
+         */
+        async function scoreSrc(src) {
+          try {
+            if (rejectSrc.test(src)) return null;
+            const resp = await page.request.get(src);
+            if (!resp.ok()) return null;
+            const buf = Buffer.from(await resp.body());
+            if (await looksLikePolicyBanner(buf)) {
+              console.error("[product-capture] skip policy banner:", src);
+              return null;
+            }
+            const score = await scorePackageShot(buf);
+            console.error(
+              "[product-capture] candidate score:",
+              src.split("/").pop(),
+              score
+            );
+            if (score <= FOOD_MAX) {
               console.error(
-                "[product-capture] candidate score:",
+                "[product-capture] skip food/low package:",
                 src.split("/").pop(),
                 score
               );
-              return { src, buf, score };
-            } catch (fetchErr) {
-              console.error("[product-capture] candidate fetch:", src, fetchErr);
               return null;
             }
-          })
-        );
+            return { src, buf, score };
+          } catch (fetchErr) {
+            console.error("[product-capture] candidate fetch:", src, fetchErr);
+            return null;
+          }
+        }
+
+        // DOM 역순(스펙 포장컷 우선). Vercel은 상위 5, 로컬은 상위 8 점수
+        const firstBatch = srcList.slice(0, fast ? 5 : 8);
+        const scored = await Promise.all(firstBatch.map(scoreSrc));
 
         for (const item of scored) {
           if (!item) continue;
@@ -187,8 +203,21 @@ export default async function handler(req, res) {
           }
         }
 
-        if ((!raw || bestScore < 40) && srcList.length > 3) {
-          for (const src of srcList.slice(3)) {
+        if ((!raw || bestScore < PACKAGE_MIN) && srcList.length > firstBatch.length) {
+          for (const src of srcList.slice(firstBatch.length)) {
+            const item = await scoreSrc(src);
+            if (!item) continue;
+            if (item.score > bestScore) {
+              bestScore = item.score;
+              raw = item.buf;
+            }
+            if (bestScore >= 85) break;
+          }
+        }
+
+        // 음식 연출만 있어서 전부 skip된 경우: 감점만 적용해 최고점 재탐색
+        if (!raw && srcList.length) {
+          for (const src of srcList.slice(0, fast ? 6 : 12)) {
             try {
               if (rejectSrc.test(src)) continue;
               const resp = await page.request.get(src);
@@ -200,10 +229,15 @@ export default async function handler(req, res) {
                 bestScore = score;
                 raw = buf;
               }
-              if (bestScore >= 70) break;
             } catch {
               /* next */
             }
+          }
+          if (raw && bestScore < 35) {
+            console.error(
+              "[product-capture] weak package score, still using best:",
+              bestScore
+            );
           }
         }
 
@@ -225,6 +259,12 @@ export default async function handler(req, res) {
           if (await looksLikePolicyBanner(raw)) {
             throw new Error(
               "교환/환불 안내 이미지가 선택되어 대표이미지로 사용할 수 없습니다."
+            );
+          }
+          const locScore = await scorePackageShot(raw);
+          if (locScore <= FOOD_MAX) {
+            throw new Error(
+              "음식 연출컷만 있어 완제품 포장 대표이미지를 찾지 못했습니다."
             );
           }
         }

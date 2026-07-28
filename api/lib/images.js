@@ -400,8 +400,8 @@ async function placeOnSquareCanvas(
 }
 
 /**
- * 포장 제품샷(스튜디오 배경 + 중앙 포장)에 가까울수록 높은 점수.
- * 라이프스타일/음식 연출컷은 낮게 나온다.
+ * 포장 완제품샷(병·팩·박스 라벨)에 가까울수록 높은 점수.
+ * 소스 그릇·음식 연출·라이프스타일컷은 낮게 나온다.
  * @param {Buffer} input
  * @returns {Promise<number>}
  */
@@ -413,7 +413,7 @@ export async function scorePackageShot(input) {
 
     const { data, info } = await sharp(input)
       .rotate()
-      .resize(120, 120, { fit: "inside" })
+      .resize(160, 160, { fit: "inside" })
       .removeAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
@@ -422,7 +422,9 @@ export async function scorePackageShot(input) {
     const ch = info.height;
     /** @param {number} x @param {number} y */
     function at(x, y) {
-      const i = (y * cw + x) * 3;
+      const xx = Math.max(0, Math.min(cw - 1, x));
+      const yy = Math.max(0, Math.min(ch - 1, y));
+      const i = (yy * cw + xx) * 3;
       return [data[i], data[i + 1], data[i + 2]];
     }
 
@@ -436,7 +438,6 @@ export async function scorePackageShot(input) {
     const bgc = corners.reduce((s, c) => s + c[1], 0) / 4;
     const bb = corners.reduce((s, c) => s + c[2], 0) / 4;
 
-    // 모서리가 밝은 단색에 가까울수록 패키지샷
     let cornerVar = 0;
     for (const c of corners) {
       cornerVar +=
@@ -448,11 +449,14 @@ export async function scorePackageShot(input) {
     let sat = 0;
     let bgCount = 0;
     const total = cw * ch;
-    const tol = 20;
+    const tol = 22;
     let minX = cw;
     let minY = ch;
     let maxX = 0;
     let maxY = 0;
+    /** @type {Uint8Array} */
+    const isFg = new Uint8Array(total);
+
     for (let y = 0; y < ch; y++) {
       for (let x = 0; x < cw; x++) {
         const i = (y * cw + x) * 3;
@@ -462,13 +466,14 @@ export async function scorePackageShot(input) {
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
         sat += max - min;
-        if (
+        const bgLike =
           Math.abs(r - br) <= tol &&
           Math.abs(g - bgc) <= tol &&
-          Math.abs(b - bb) <= tol
-        ) {
+          Math.abs(b - bb) <= tol;
+        if (bgLike) {
           bgCount += 1;
         } else {
+          isFg[y * cw + x] = 1;
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
           if (y < minY) minY = y;
@@ -478,24 +483,177 @@ export async function scorePackageShot(input) {
     }
     sat /= total;
     const bgRatio = bgCount / total;
+    if (maxX < minX || maxY < minY) return 0;
+
     const contentW = Math.max(1, maxX - minX + 1);
     const contentH = Math.max(1, maxY - minY + 1);
     const fill = (contentW * contentH) / total;
+    const contentAspect = contentH / contentW;
+
+    // —— 가로 라벨 띠: 포장 라벨은 행 평균색이 갑자기 바뀌는 구간이 많음 ——
+    let bandTransitions = 0;
+    /** @type {number[]} */
+    const rowLuma = [];
+    /** @type {number[]} */
+    const rowHueProxy = [];
+    for (let y = minY; y <= maxY; y++) {
+      let sumR = 0;
+      let sumG = 0;
+      let sumB = 0;
+      let n = 0;
+      for (let x = minX; x <= maxX; x++) {
+        if (!isFg[y * cw + x]) continue;
+        const i = (y * cw + x) * 3;
+        sumR += data[i];
+        sumG += data[i + 1];
+        sumB += data[i + 2];
+        n += 1;
+      }
+      if (n < 2) {
+        rowLuma.push(rowLuma.length ? rowLuma[rowLuma.length - 1] : 128);
+        rowHueProxy.push(0);
+        continue;
+      }
+      const ar = sumR / n;
+      const ag = sumG / n;
+      const ab = sumB / n;
+      rowLuma.push((ar + ag + ab) / 3);
+      rowHueProxy.push(ar - ab);
+    }
+    for (let i = 1; i < rowLuma.length; i++) {
+      const dL = Math.abs(rowLuma[i] - rowLuma[i - 1]);
+      const dH = Math.abs(rowHueProxy[i] - rowHueProxy[i - 1]);
+      if (dL > 18 || dH > 22) bandTransitions += 1;
+    }
+    const bandDensity =
+      rowLuma.length > 0 ? bandTransitions / rowLuma.length : 0;
+
+    // —— 중앙 텍스처: 소스·음식은 국소 분산이 크고, 병은 상대적으로 매끈 ——
+    let texSum = 0;
+    let texN = 0;
+    const cx0 = minX + Math.floor(contentW * 0.2);
+    const cx1 = minX + Math.floor(contentW * 0.8);
+    const cy0 = minY + Math.floor(contentH * 0.25);
+    const cy1 = minY + Math.floor(contentH * 0.75);
+    for (let y = cy0; y < cy1; y++) {
+      for (let x = cx0; x < cx1; x++) {
+        if (!isFg[y * cw + x]) continue;
+        const [r, g, b] = at(x, y);
+        const [r2, g2, b2] = at(x + 1, y);
+        const [r3, g3, b3] = at(x, y + 1);
+        texSum +=
+          Math.abs(r - r2) +
+          Math.abs(g - g2) +
+          Math.abs(b - b2) +
+          Math.abs(r - r3) +
+          Math.abs(g - g3) +
+          Math.abs(b - b3);
+        texN += 1;
+      }
+    }
+    const texture = texN > 0 ? texSum / texN / 6 : 0;
+
+    // —— 음식색(적갈·주황 소스) 비율 ——
+    let foodish = 0;
+    let fgN = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (!isFg[y * cw + x]) continue;
+        fgN += 1;
+        const i = (y * cw + x) * 3;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const satPx = max - min;
+        // 적갈·주황 계열 + 중간 밝기 = 소스/음식 톤
+        if (
+          satPx > 35 &&
+          r > g + 8 &&
+          r > b + 15 &&
+          r > 70 &&
+          r < 220 &&
+          g > 30 &&
+          g < 160
+        ) {
+          foodish += 1;
+        }
+      }
+    }
+    const foodRatio = fgN > 0 ? foodish / fgN : 0;
+
+    // —— 세로 실루엣 폭 변화: 병은 허리/캡으로 폭이 변하고, 그릇은 하단이 넓음 ——
+    /** @type {number[]} */
+    const rowWidths = [];
+    for (let y = minY; y <= maxY; y++) {
+      let left = -1;
+      let right = -1;
+      for (let x = minX; x <= maxX; x++) {
+        if (!isFg[y * cw + x]) continue;
+        if (left < 0) left = x;
+        right = x;
+      }
+      rowWidths.push(left < 0 ? 0 : right - left + 1);
+    }
+    const midW = rowWidths[Math.floor(rowWidths.length * 0.45)] || 1;
+    const botW = rowWidths[Math.floor(rowWidths.length * 0.85)] || 1;
+    const topW = rowWidths[Math.floor(rowWidths.length * 0.12)] || 1;
+    const bowlFlare = botW / Math.max(1, midW);
+    const topNarrow = topW / Math.max(1, midW);
 
     let score = 0;
-    if (cornerBright > 200 && cornerVar < 12) score += 40;
-    else if (cornerBright > 180 && cornerVar < 25) score += 20;
-    if (bgRatio > 0.35 && bgRatio < 0.85) score += 25;
-    if (fill > 0.12 && fill < 0.55) score += 25;
-    if (sat < 25) score += 15;
-    if (sat > 45) score -= 25;
-    // 극단 가로/세로는 감점 (짧은 팁 배너·초장문 배너)
+    if (cornerBright > 200 && cornerVar < 12) score += 35;
+    else if (cornerBright > 180 && cornerVar < 25) score += 18;
+    if (bgRatio > 0.35 && bgRatio < 0.88) score += 20;
+    if (fill > 0.1 && fill < 0.6) score += 18;
+    if (sat < 28) score += 10;
+    if (sat > 50) score -= 18;
+
+    // 세로로 긴 포장(병·팩) 가점 / 둥근·넓은 피사체(그릇·접시) 감점
+    if (contentAspect >= 1.45) score += 35;
+    else if (contentAspect >= 1.2) score += 22;
+    else if (contentAspect >= 1.05) score += 8;
+    else if (contentAspect <= 0.95) score -= 28;
+    else score -= 12;
+
+    // 라벨 띠(색 구간 전환) — 완제품 라벨 신호
+    if (bandDensity >= 0.12) score += 30;
+    else if (bandDensity >= 0.07) score += 18;
+    else if (bandDensity < 0.035) score -= 15;
+
+    // 고텍스처 + 둥근 구도 = 음식 연출
+    if (texture > 14 && contentAspect < 1.15) score -= 35;
+    else if (texture > 18) score -= 18;
+    else if (texture < 8 && contentAspect >= 1.15) score += 12;
+
+    // 소스색 비율이 높고 세로비가 낮으면 음식컷
+    if (foodRatio > 0.35 && contentAspect < 1.2) score -= 40;
+    else if (foodRatio > 0.25 && contentAspect < 1.25) score -= 25;
+    else if (foodRatio > 0.45) score -= 15;
+
+    // 하단이 확 넓어지는 그릇형 실루엣
+    if (bowlFlare > 1.35 && contentAspect < 1.25) score -= 25;
+    // 상단이 좁은 병형
+    if (topNarrow < 0.75 && contentAspect >= 1.2) score += 12;
+
     const ratio = h / w;
     if (ratio < 0.45 || ratio > 3.2) score -= 20;
+
     return score;
   } catch {
     return 0;
   }
+}
+
+/**
+ * 소스 그릇·음식 연출처럼 보이면 true (대표이미지 후보에서 배제용)
+ * @param {Buffer} input
+ * @returns {Promise<boolean>}
+ */
+export async function looksLikeFoodPresentation(input) {
+  const score = await scorePackageShot(input);
+  return score < 45;
 }
 
 /**
