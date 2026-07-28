@@ -1,29 +1,19 @@
-# 주문내역 고객정보 추출기 (Order Customer Extractor)
+# 전자상거래 업무 자동화 툴 (E-commerce Automation Toolkit)
 
-쿠팡 · 네이버 스마트스토어 주문 Excel을 업로드하면 고객별 주문정보를 읽기 쉬운 텍스트로 자동 변환하는 **100% Client-side SPA**입니다.
-
-개인정보는 브라우저 메모리에서만 처리하며, 외부 서버로 전송하지 않습니다.
+하나의 웹사이트에서 전자상거래 업무 자동화 도구를 선택해 사용하는 **SPA 툴킷**입니다.
 
 저장소: [ronafa-debug/customer_data_extractor](https://github.com/ronafa-debug/customer_data_extractor)
 
 ---
 
-## 주요 기능
+## 제공 도구
 
-- **쇼핑몰 자동 인식**: 쿠팡 / 네이버 스마트스토어 (UI에서 선택하지 않음)
-- **네이버 암호 파일 자동 해제**: 비밀번호 `1108`로 자동 열기
-- **고객 그룹화**: 이름 + 전화번호 + 주소가 같으면 한 고객으로 병합
-- **동일 상품 수량 합산**: 같은 고객·같은 상품명이면 수량 합산
-- **상품명 정규화**: 용량 단위(`kg` / `g` / `ml` / `L` 등)까지만 추출
-- **주소 중복 제거**: 기본주소·상세주소가 같거나 포함 관계면 한 번만 출력
-- **출력 모드**
-  - 기본: 고객별 (이름 / 전화 / 주소 / 배송메시지 / 상품)
-  - 택배기사용: 이름 / 주소 / 배송메시지
-  - 피킹용: 상품별 총합
-- **검색**: 고객명 · 전화번호 · 주소 · 상품명 (debounce 300ms)
-- **통계**: 총 고객 / 상품 종류 / 총 수량 / 배송메시지 수
-- **복사 · TXT 다운로드 · 초기화**
-- **다크모드 · 모바일 대응**
+| 도구 | 설명 |
+|------|------|
+| 주문내역 고객정보 추출기 | 쿠팡·네이버 주문 Excel → 고객별 텍스트 (브라우저 전용) |
+| 제품 정보 추출기 | 상품 URL → 대표/상세/필수정보/추가 PNG 4종 (Playwright 서버) |
+
+신규 도구는 `js/tools/registry.js`와 라우트만 추가하면 확장됩니다.
 
 ---
 
@@ -31,12 +21,29 @@
 
 | 구분 | 기술 |
 |------|------|
-| UI | HTML5, CSS3, Bootstrap 5 |
-| 로직 | Vanilla JavaScript (ES6 Modules) |
-| Excel | SheetJS (xlsx), xlsx-populate |
-| 기타 | FileSaver.js, JSZip, CryptoJS |
+| Frontend | HTML5, CSS3, Bootstrap 5, Vanilla JS (ES6 Modules) |
+| Backend | Vercel Serverless Functions / 로컬 `scripts/dev-server.mjs` (Node.js 20+) |
+| Browser Automation | Playwright (`playwright` 로컬, `playwright-core` + `@sparticuz/chromium` 배포) |
+| Image | Sharp (서버 리사이즈·크롭·정사각 배치) |
 
-빌드 도구 없이 브라우저에서 바로 실행 가능합니다.
+---
+
+## 아키텍처
+
+```text
+사용자
+  ↓
+Frontend (해시 라우터 SPA)
+  ↓
+주문 추출기: 브라우저만 처리 (개인정보 서버 미전송)
+제품 추출기: POST /api/product-capture
+  ↓
+Playwright → DOM 분석 → 이미지 URL/스크린샷 → Sharp → PNG(base64) 반환
+```
+
+- 브라우저는 타 사이트를 **직접 캡처하지 않습니다**.
+- 캡처·DOM 분석·이미지 생성은 **서버에서만** 수행합니다.
+- 서버에 상품/개인정보를 **저장하지 않습니다**.
 
 ---
 
@@ -46,153 +53,143 @@
 index.html
 css/style.css
 js/
-  app.js                 # SPA 엔트리 (UI 이벤트 연결)
-  constants.js           # 상수 · 에러 메시지
-  model/
-    Customer.js
-    Product.js
-  parser/
-    BaseParser.js        # 공통 유틸 (컬럼 매핑, 주소 결합)
-    CoupangParser.js
-    NaverParser.js
-    ParserFactory.js     # Parser 자동 선택 (확장 포인트)
-  services/
-    ExcelService.js
-    ExportService.js
-    SearchService.js
-    StatisticsService.js
-  utils/
-    ProductExtractor.js
-    GroupCustomer.js
-    MergeProduct.js
-    Clipboard.js
-    DateUtil.js
+  app.js
+  router/Router.js
+  tools/registry.js
   views/
-    Renderer.js
+    HomeView.js
+    OrderExtractorView.js
+    ProductExtractorView.js
+  order/                 # 주문 추출기 (독립 모듈)
+  product/               # URL 기반 Parser (프론트 판별)
+  services/
+    CaptureService.js
+    ImageService.js
+    DownloadService.js
+  components/
+    ImagePreview.js
+api/
+  product-capture.js
+  lib/
+    browser.js           # 로컬 브라우저 재사용 / Vercel Chromium
+    images.js            # Sharp 규칙 (포장샷 크롭·정사각)
+    product/             # Playwright Parser (모노마트 등)
+scripts/
+  dev-server.mjs         # 로컬 정적 + API (포트 5151)
+vercel.json
+package.json
 tests/
   run-tests.mjs
 ```
-
-신규 쇼핑몰 지원 시 **Parser만 추가**하고 `ParserFactory`에 등록하면 됩니다 (Open/Closed Principle).
 
 ---
 
 ## 로컬 실행
 
-ES Module을 사용하므로 `file://`이 아닌 HTTP 서버로 열어야 합니다.
-
 ```bash
-# 예: serve (포트 5151)
-npx --yes serve -l 5151
+npm install
+npm run install:browser   # Chromium (최초 1회)
+npm run dev:local         # http://localhost:5151
 ```
 
-브라우저에서 [http://localhost:5151](http://localhost:5151) 접속
-
-Netlify / Vercel 등 정적 호스팅에도 그대로 배포할 수 있습니다.
+- `npm run dev:local` — 정적 파일 + `/api/product-capture` (권장)
+- `npm run dev` — `vercel dev` (Vercel CLI 로그인 필요)
+- `npm start` — 정적만 (주문 추출기만 사용 시)
+- `npm run test:order` — 주문 추출기 단위 테스트
 
 ---
 
-## 단위 테스트
+## 1) 주문내역 고객정보 추출기
 
-```bash
-node tests/run-tests.mjs
-```
+쿠팡·네이버 스마트스토어 주문 Excel을 업로드하면 고객별 주문정보를 읽기 쉬운 텍스트로 변환합니다. **100% 클라이언트**에서 처리합니다.
 
-포함 시나리오:
+### 주요 기능
 
-1. 쿠팡 주문서 자동 인식 · 파싱
-2. 네이버 주문서 자동 인식 · 파싱
-3. 동일 고객 그룹화
-4. 동일 상품 수량 합산
-5. 출력 형식 (필드 간 빈 줄, 배송메시지 없을 때 블록 생략)
-6. 쿠팡 기본주소·상세주소 중복 제거
-7. 미지원 주문서 에러 메시지
+- 쇼핑몰 자동 인식 (쿠팡 / 네이버)
+- 네이버 암호 파일 자동 해제 (비밀번호 `1108`)
+- 고객 그룹화 · 동일 상품 수량 합산 · 상품명 단위까지 정규화
+- 출력 모드: 기본 / 택배기사용 / 피킹용
+- 검색 · 통계 · 복사 · TXT 다운로드 · 다크모드
+
+### 출력 규칙
+
+- 이름 / 전화 / 주소 / (배송메시지) / 상품 사이에 **빈 줄**
+- 기본주소 + 상세주소는 **한 줄**, 동일·포함 관계면 **중복 제거**
+- 배송메시지가 없으면 해당 블록 생략
 
 ---
 
-## 출력 예시 (기본 모드)
+## 2) 제품 정보 추출기
 
-### 네이버
+상품 URL을 입력하면 서버가 페이지를 열고 **4종 PNG**를 생성합니다.
 
-```text
-서선일
+### 생성 규칙
 
-010-9414-7127
+| ID | 내용 | 크기 | 파일명 예 |
+|----|------|------|-----------|
+| 대표이미지 | 상세 본문 **「제품 스펙 총정리」** 포장 제품컷 | 1000×1000 | `제품명 - 대표이미지.png` |
+| 상세페이지1 | 대표이미지 리사이즈 | 860×860 | `제품명1 - 상세페이지.png` |
+| 상세페이지2 | **상품필수 정보** 섹션 캡처 | 가로 860 | `제품명2 - 상세페이지.png` |
+| 추가이미지 | 상세페이지2를 흰 캔버스 중앙 배치 | 1000×1000 | `제품명 - 추가이미지.png` |
 
-18034 경기도 평택시 소사3로 22 (소사동, 평택 효성해링턴 플레이스 2단지) 208-1302
+- 슬롯은 항상 4개 반환. 실패 시 `status: "error"`와 사유를 미리보기에 표시
+- 선택 다운로드: PNG 개별 저장 (ZIP 없음). 여러 장은 순차 다운로드
+- 현재 Parser: **모노마트(Monomart)**. 확장은 `api/lib/product/` + `js/product/`에 Parser 추가 후 Factory 등록
 
-핑크 나루토마키 어묵 160g 5개
+---
 
--------------------
-```
+## Vercel 배포
 
-### 쿠팡
+1. GitHub 저장소 연결 후 Import  
+2. Framework Preset: Other, Node.js 20+  
+3. 배포 후 `/api/product-capture` 동작  
 
-```text
-이주언
-
-0502-4337-6694
-
-42737 대구광역시 달서구 구마로 238 세현빌딩 2층 광피씨방 ( 송현동 )
-
-꼭..매장안 직원에게 전달해주세요~
-
-한입 찰도그 900g 1개
-
--------------------
-```
-
-공통 규칙:
-
-- 이름 / 전화 / 주소 / (배송메시지) / 상품 사이에 **빈 줄**을 둡니다.
-- 기본주소와 상세주소는 **한 줄**로 합치되, 내용이 같으면 **중복하지 않습니다**.
-- 배송메시지가 없으면 해당 블록을 출력하지 않습니다.
+> Hobby 플랜은 함수 실행 시간 제한으로 콜드스타트 시 타임아웃이 날 수 있습니다. 필요 시 Pro 또는 `maxDuration` 조정.
 
 ---
 
 ## 오류 · 개선 사항 (Changelog)
 
-### 쿠팡 주소 중복 출력 수정
+### Toolkit · 제품 정보 추출기
 
 | 문제 | 조치 |
 |------|------|
-| 기본주소·상세주소에 동일 값이 있어 주소가 두 번 이어 붙음 | `joinAddressParts()`로 동일·포함 관계면 한 번만 사용 |
-| 주소/상세주소 컬럼이 같은 열로 잘못 매핑될 수 있음 | `findColumnIndex`에 제외 인덱스 지원, 상세주소는 기본주소 컬럼을 재사용하지 않음 |
-| `"주소"` 부분 매칭이 `"상세주소"`와 충돌 | 구체적 헤더명(`수취인주소` 등)을 우선 매칭 |
+| 이미지가 2장만 생성됨 | 항상 4슬롯 반환, 실패 슬롯에 사유 표시 |
+| 대표이미지가 상단 썸네일/마케팅 배너로 잡힘 | 「제품 스펙 총정리」 영역 `emono/product` 상세컷만 사용 |
+| 대표이미지가 교환/환불·고객센터 안내로 잡힘 | `buyer-inform`·`/editor/policy/` 등 제외 + 정책 배너 판별 후 스킵 |
+| 포장샷 대신 음식 연출컷이 선택됨 | `scorePackageShot`으로 스튜디오 포장샷 우선 |
+| 대표이미지 상단 잘림 · 상하 여백 없음 | 포장 직전 흰 간격 검출 후 본체 bbox 크롭, 사방 ~7% 여백 |
+| 여백이 회색으로 보임 | 캔버스 배경을 원본 스튜디오/흰색에 맞춤 |
+| 팝업이 캡처에 포함됨 | 캡처 전 채팅·리치팝업·딤드 제거 |
+| 선택 다운로드 시 저장 창이 여러 번 / `.tmp` 잔여 | PNG 순차 다운로드, FileSaver 미사용으로 임시파일 완화 |
+| 폴더 선택 API(`showDirectoryPicker`) NotAllowedError | 일부 환경에서 API 차단 → PNG 직접 다운로드로 안정화 |
+| 생성 속도가 느림 | `networkidle`→`load`, 스크롤·대기 단축, 후보 이미지 병렬 점수, 로컬 브라우저 재사용 |
 
-### 출력 형식 수정
+### 주문내역 고객정보 추출기 (유지)
 
 | 문제 | 조치 |
 |------|------|
-| 필드가 줄바꿈만으로 붙어 가독성이 떨어짐 | 이름·전화·주소·상품 블록 사이를 빈 줄로 구분 |
-| 네이버 상세주소(`208-1302` 등)가 다음 줄로 분리됨 | 기본주소 + 상세주소를 공백으로 한 줄 결합 |
-| 주소에 남아 있던 줄바꿈이 출력에 노출됨 | 출력 시 주소 내 줄바꿈을 공백으로 평탄화 |
+| 쿠팡 기본/상세주소 중복 | `joinAddressParts()`로 동일·포함 시 한 번만 사용 |
+| 필드가 붙어 가독성 저하 | 블록 사이 빈 줄 |
+| 네이버 상세주소 줄바꿈 분리 | 기본+상세를 한 줄로 결합 |
 
-### 아키텍처 (v3)
-
-| 항목 | 내용 |
-|------|------|
-| ES6 Module 전환 | IIFE/전역 변수 방식 제거, `import`/`export` 사용 |
-| 계층 분리 | Parser / Service / Utility / View 분리 |
-| 공통 모델 | 모든 Parser가 `Customer` · `Product` 반환 |
-| 에러 UX | 사용자 메시지와 `console.error` 상세 로그 분리 |
-| 보안 | 개인정보 서버 전송·영구 저장 없음 (테마 설정만 LocalStorage) |
-
-### Excel / 파서
+### 아키텍처
 
 | 항목 | 내용 |
 |------|------|
-| 암호화 파일 | OLE 래퍼 감지 후 비밀번호 `1108`로 자동 해제 시도 |
-| 손상·미지원 파일 | `손상된 Excel 파일입니다.` / `지원하지 않는 주문서입니다.` 등 안내 |
-| 컬럼 매핑 | 쇼핑몰별 헤더명 차이를 `findColumnIndex`로 흡수 |
+| SPA 툴킷 | 홈 → 도구 선택, 해시 라우팅 |
+| 주문 추출기 분리 | `js/order/`로 이전, 기존 동작 유지 |
+| Parser Pattern | Front/Server Factory 등록만으로 쇼핑몰 확장 |
+| ES6 Modules | import/export, 계층 분리 |
 
 ---
 
 ## 보안
 
-- 주문·고객 데이터는 **브라우저 메모리에서만** 처리합니다.
-- Analytics / 외부 API 전송을 사용하지 않습니다.
-- LocalStorage에는 UI 테마 설정만 저장합니다.
+- 주문 Excel: 브라우저 메모리에서만 처리 (서버 미전송)
+- 제품 캡처: URL만 전송, 결과 PNG만 반환, 서버 미저장
+- Analytics 미사용
+- LocalStorage에는 UI 테마 설정만 저장
 
 ---
 

@@ -2,15 +2,15 @@
  * v3 핵심 로직 단위 테스트 (Node ESM)
  * 실행: node tests/run-tests.mjs
  */
-import { extractProductName } from "../js/utils/ProductExtractor.js";
-import { groupCustomers } from "../js/utils/GroupCustomer.js";
-import { mergeProducts } from "../js/utils/MergeProduct.js";
-import { formatBasic } from "../js/services/ExportService.js";
-import { CoupangParser } from "../js/parser/CoupangParser.js";
-import { NaverParser } from "../js/parser/NaverParser.js";
-import { ParserFactory } from "../js/parser/ParserFactory.js";
-import { ERROR_MESSAGE } from "../js/constants.js";
-import { Customer } from "../js/model/Customer.js";
+import { extractProductName } from "../js/order/utils/ProductExtractor.js";
+import { groupCustomers } from "../js/order/utils/GroupCustomer.js";
+import { mergeProducts } from "../js/order/utils/MergeProduct.js";
+import { formatBasic } from "../js/order/services/ExportService.js";
+import { CoupangParser } from "../js/order/parser/CoupangParser.js";
+import { NaverParser } from "../js/order/parser/NaverParser.js";
+import { ParserFactory } from "../js/order/parser/ParserFactory.js";
+import { ERROR_MESSAGE } from "../js/order/constants.js";
+import { Customer } from "../js/order/model/Customer.js";
 
 let passed = 0;
 let failed = 0;

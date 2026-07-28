@@ -10,13 +10,13 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Node (로컬 테스트·serve 용)
+# Node
 node_modules/
-package.json
-package-lock.json
 npm-debug.log*
+.vercel/
 
 # Local artifacts
 *.tmp
 .cache/
 dist/
+tmp/
