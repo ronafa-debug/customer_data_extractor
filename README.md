@@ -14,6 +14,7 @@
 | 목적 | 주문 정리·상품 이미지 생성 등 반복 업무를 한곳에서 자동화 |
 | 구성 | 홈(도구 선택) → 도구별 화면 (해시 라우팅 SPA) |
 | 원칙 | 주문 개인정보는 브라우저만 처리 / 상품 캡처는 서버 Playwright만 사용 |
+| 배포 | Vercel 웹 · 로컬 개발 · **포터블 ZIP**(직원 PC 공유) |
 | 확장 | `js/tools/registry.js` + 라우트·Parser Factory에 도구·쇼핑몰 추가 |
 
 ---
@@ -35,6 +36,7 @@
 | Backend | Vercel Serverless Functions / 로컬 `scripts/dev-server.mjs` (Node.js 20+) |
 | Browser Automation | Playwright (`playwright` 로컬, `playwright-core` + `@sparticuz/chromium` 배포) |
 | Image | Sharp (리사이즈·크롭·정사각·포장샷 점수) |
+| 포터블 배포 | Node.js portable + Chromium + `실행.bat` (`npm run build:portable`) |
 
 ---
 
@@ -55,13 +57,14 @@ Playwright → DOM 분석 → 이미지 URL/스크린샷 → Sharp → PNG(base6
 - 캡처·DOM 분석·이미지 생성은 **서버에서만** 수행합니다.
 - 서버에 상품/개인정보를 **저장하지 않습니다**.
 
-### 로컬 vs Vercel
+### 실행 환경 비교
 
-| | 로컬 (`npm run dev:local`) | Vercel (Hobby) |
-|--|---------------------------|----------------|
+| | 로컬 / 포터블 ZIP | Vercel (Hobby) |
+|--|-------------------|----------------|
 | 품질 | 큰 viewport·충분한 대기 → **업무용 권장** | 60초 한도로 빠른 경로(작은 viewport 등) |
 | 속도 | Chromium 재사용으로 재요청이 빠름 | 콜드스타트 시 첫 요청이 느릴 수 있음 |
-| 용도 | 최종 이미지 생성 | 데모·간단한 공유 |
+| 설치 | 로컬: Node.js 필요 / 포터블: ZIP 해제만 | 없음 (URL 접속) |
+| 용도 | 최종 이미지 생성 · 직원 PC 공유 | 데모·간단한 공유 |
 
 ---
 
@@ -94,6 +97,8 @@ api/
     product/             # Playwright Parser (모노마트 등)
 scripts/
   dev-server.mjs         # 로컬 정적 + API (포트 5151)
+  build-portable.mjs     # 직원 배포용 포터블 ZIP 빌드
+  launcher.mjs           # 포터블/런처용 엔트리
 vercel.json
 package.json
 tests/
@@ -110,12 +115,37 @@ npm run install:browser   # Chromium (최초 1회)
 npm run dev:local         # http://localhost:5151
 ```
 
-- `npm run dev:local` — 정적 파일 + `/api/product-capture` (**권장**)
+- `npm run dev:local` — 정적 파일 + `/api/product-capture` (**개발·업무용 권장**)
+- `npm run build:portable` — 직원 배포용 포터블 패키지 생성 (`dist/ecommerce-toolkit/`)
 - `npm run dev` — `vercel dev` (Vercel CLI 로그인 필요)
 - `npm start` — 정적만 (주문 추출기만 사용 시)
 - `npm run test:order` — 주문 추출기 단위 테스트
 
 > 제품 추출기 코드를 수정한 뒤에는 **로컬 서버를 재시작**해야 새 로직이 반영됩니다.
+
+---
+
+## 포터블 배포 (직원 PC)
+
+Node.js가 없는 PC에서도 쓸 수 있도록 **포터블 ZIP**을 만들 수 있습니다. (이미지 품질은 로컬과 동일)
+
+```bash
+npm run build:portable
+```
+
+결과물: `dist/ecommerce-toolkit/` (ZIP으로 압축해 배포)
+
+| 포함 항목 | 설명 |
+|-----------|------|
+| `실행.bat` | 더블클릭 → 서버 시작 + 브라우저 자동 오픈 |
+| `node.exe` | 포터블 Node.js (별도 설치 불필요) |
+| `app/` | 앱 소스 + 의존성 |
+| `browsers/` | Chromium (빌드 시 포함 가능) |
+
+**받는 사람:** ZIP 압축 해제 → `실행.bat` 더블클릭 → `http://localhost:5151`  
+**종료:** 검은 창을 닫거나 `Ctrl+C`
+
+> `dist/`는 Git에 올리지 않습니다. ZIP 파일은 메신저·공유 폴더로 전달하세요.
 
 ---
 
@@ -171,7 +201,7 @@ npm run dev:local         # http://localhost:5151
 3. 배포 후 `/api/product-capture` 동작  
 
 > Hobby 플랜은 함수 실행 시간 최대 **60초**입니다. Chromium 콜드스타트 시 첫 요청이 타임아웃될 수 있으니, 실패 시 한 번 더 시도하세요.  
-> 최종 업무용 이미지는 **로컬 실행**이 더 안정적입니다.
+> 최종 업무용 이미지는 **로컬 또는 포터블 ZIP**이 더 안정적입니다.
 
 ---
 
@@ -192,7 +222,8 @@ npm run dev:local         # http://localhost:5151
 | 폴더 선택 API(`showDirectoryPicker`) NotAllowedError | 일부 환경에서 API 차단 → PNG 직접 다운로드로 안정화 |
 | 생성 속도가 느림 | `networkidle`→`load`, 스크롤·대기 단축, 후보 이미지 병렬 점수, 로컬 브라우저 재사용 |
 | Vercel에서 Chromium 기동 실패·타임아웃 | `@sparticuz/chromium` + `LD_LIBRARY_PATH`, `maxDuration` 60, Vercel용 빠른 캡처 경로 |
-| Vercel vs 로컬 결과 차이 (필수정보 등) | Vercel은 모바일 viewport·짧은 대기(60초 한도). 품질은 로컬 우선 |
+| Vercel vs 로컬 결과 차이 (필수정보 등) | Vercel은 모바일 viewport·짧은 대기(60초 한도). 품질은 로컬/포터블 우선 |
+| 직원 PC에 Node.js 없이 배포 필요 | `npm run build:portable` → `실행.bat` 포터블 ZIP (Node + Chromium 포함) |
 
 ### 주문내역 고객정보 추출기 (유지)
 
@@ -210,6 +241,7 @@ npm run dev:local         # http://localhost:5151
 | 주문 추출기 분리 | `js/order/`로 이전, 기존 동작 유지 |
 | Parser Pattern | Front/Server Factory 등록만으로 쇼핑몰 확장 |
 | ES6 Modules | import/export, 계층 분리 |
+| 포터블 패키징 | `scripts/build-portable.mjs`로 배포용 폴더·ZIP 생성 |
 
 ---
 
