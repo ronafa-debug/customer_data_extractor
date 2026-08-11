@@ -80,7 +80,7 @@ export function renderOrderExtractorView(root) {
           <h2 class="result-title">변환 결과</h2>
           <span id="resultCount" class="result-count"></span>
         </div>
-        <pre id="resultOutput" class="result-output" aria-live="polite">파일을 업로드한 뒤 변환을 눌러주세요.</pre>
+        <div id="resultOutput" class="result-output is-plain" aria-live="polite">파일을 업로드한 뒤 변환을 눌러주세요.</div>
       </section>
 
       <footer class="app-footer">

@@ -23,7 +23,7 @@
 
 | 도구 | 설명 |
 |------|------|
-| 주문내역 고객정보 추출기 | 쿠팡·네이버 주문 Excel → 고객별 텍스트 (브라우저 전용) |
+| 주문내역 고객정보 추출기 | 쿠팡·네이버 주문 Excel → 고객별 텍스트 (브라우저 전용). **고객 1명당 복사** 지원 |
 | 제품 정보 추출기 | 상품 URL → 대표/상세/필수정보/추가 PNG 4종 (Playwright 서버) |
 
 ---
@@ -36,7 +36,7 @@
 | Backend | Vercel Serverless Functions / 로컬 `scripts/dev-server.mjs` (Node.js 20+) |
 | Browser Automation | Playwright (`playwright` 로컬, `playwright-core` + `@sparticuz/chromium` 배포) |
 | Image | Sharp (리사이즈·크롭·정사각·포장샷 점수) |
-| 포터블 배포 | Node.js portable + Chromium + `실행.bat` (`npm run build:portable`) |
+| 포터블 배포 | Node.js portable + Chromium + `run.bat` (`npm run build:portable`) |
 
 ---
 
@@ -64,7 +64,8 @@ Playwright → DOM 분석 → 이미지 URL/스크린샷 → Sharp → PNG(base6
 | 품질 | 큰 viewport·충분한 대기 → **업무용 권장** | 60초 한도로 빠른 경로(작은 viewport 등) |
 | 속도 | Chromium 재사용으로 재요청이 빠름 | 콜드스타트 시 첫 요청이 느릴 수 있음 |
 | 설치 | 로컬: Node.js 필요 / 포터블: ZIP 해제만 | 없음 (URL 접속) |
-| 용도 | 최종 이미지 생성 · 직원 PC 공유 | 데모·간단한 공유 |
+| 포트 | 기본 **5151**, 사용 중이면 다음 포트 자동 | 배포 도메인 |
+| 용도 | 최종 이미지·주문 변환 · 직원 PC 공유 | 데모·간단한 공유 |
 
 ---
 
@@ -96,8 +97,9 @@ api/
     images.js            # Sharp 규칙 (포장샷 점수·크롭·정사각)
     product/             # Playwright Parser (모노마트 등)
 scripts/
-  dev-server.mjs         # 로컬 정적 + API (포트 5151)
+  dev-server.mjs         # 로컬 정적 + API (포트 5151, 충돌 시 자동 전환)
   build-portable.mjs     # 직원 배포용 포터블 ZIP 빌드
+  write-portable-bats.mjs # ASCII 전용 run.bat 생성
   launcher.mjs           # 포터블/런처용 엔트리
 vercel.json
 package.json
@@ -121,7 +123,8 @@ npm run dev:local         # http://localhost:5151
 - `npm start` — 정적만 (주문 추출기만 사용 시)
 - `npm run test:order` — 주문 추출기 단위 테스트
 
-> 제품 추출기 코드를 수정한 뒤에는 **로컬 서버를 재시작**해야 새 로직이 반영됩니다.
+> 제품 추출기 서버 코드를 수정한 뒤에는 **로컬 서버를 재시작**해야 새 로직이 반영됩니다.  
+> 주문 추출기(프론트)만 수정한 경우에는 브라우저 새로고침으로 충분합니다.
 
 ---
 
@@ -137,15 +140,18 @@ npm run build:portable
 
 | 포함 항목 | 설명 |
 |-----------|------|
-| `실행.bat` | 더블클릭 → 서버 시작 + 브라우저 자동 오픈 |
+| **`run.bat`** / `RUNME.bat` | 더블클릭 → 서버 시작 + 브라우저 자동 오픈 |
 | `node.exe` | 포터블 Node.js (별도 설치 불필요) |
 | `app/` | 앱 소스 + 의존성 |
 | `browsers/` | Chromium (빌드 시 포함 가능) |
 
-**받는 사람:** ZIP 압축 해제 → `실행.bat` 더블클릭 → `http://localhost:5151`  
+**받는 사람:** ZIP 압축 해제 → **`run.bat`** 더블클릭  
 **종료:** 검은 창을 닫거나 `Ctrl+C`
 
-> `dist/`는 Git에 올리지 않습니다. ZIP 파일은 메신저·공유 폴더로 전달하세요.
+> - `.bat` 내용은 **ASCII 전용**(한글/UTF-8 BOM 없음). Windows cmd가 UTF-8 한글 bat을 깨뜨리기 때문입니다.  
+> - 서버가 **먼저** 뜬 뒤 브라우저를 엽니다 (`OPEN_BROWSER=1`).  
+> - 포트 **5151이 사용 중**이면 5152, 5153…으로 자동 전환하고 그 주소로 브라우저를 엽니다.  
+> - `dist/`는 Git에 올리지 않습니다. ZIP은 메신저·공유 폴더로 전달하세요.
 
 ---
 
@@ -159,7 +165,15 @@ npm run build:portable
 - 네이버 암호 파일 자동 해제 (비밀번호 `1108`)
 - 고객 그룹화 · 동일 상품 수량 합산 · 상품명 단위까지 정규화
 - 출력 모드: 기본 / 택배기사용 / 피킹용
-- 검색 · 통계 · 복사 · TXT 다운로드 · 다크모드
+- 검색 · 통계 · **전체 복사** · **고객 1명당 복사** · TXT 다운로드 · 다크모드
+
+### 변환 결과 · 고객별 복사
+
+- **기본 / 택배기사용** 모드: 고객 블록마다 구분선 위에 **복사하기** 버튼 표시
+- 클릭 전: 옅은 빨강 + 「복사하기」
+- 클릭 후: 진한 빨강 + 「복사완료」 → 해당 고객 텍스트만 클립보드 복사
+- 상단 **복사** 버튼: 화면에 보이는 결과 **전체** 복사
+- **피킹용** 모드: 상품 합산 목록이므로 전체 텍스트 표시(고객별 버튼 없음)
 
 ### 출력 규칙
 
@@ -223,15 +237,18 @@ npm run build:portable
 | 생성 속도가 느림 | `networkidle`→`load`, 스크롤·대기 단축, 후보 이미지 병렬 점수, 로컬 브라우저 재사용 |
 | Vercel에서 Chromium 기동 실패·타임아웃 | `@sparticuz/chromium` + `LD_LIBRARY_PATH`, `maxDuration` 60, Vercel용 빠른 캡처 경로 |
 | Vercel vs 로컬 결과 차이 (필수정보 등) | Vercel은 모바일 viewport·짧은 대기(60초 한도). 품질은 로컬/포터블 우선 |
-| 직원 PC에 Node.js 없이 배포 필요 | `npm run build:portable` → `실행.bat` 포터블 ZIP (Node + Chromium 포함) |
+| 직원 PC에 Node.js 없이 배포 필요 | `npm run build:portable` → 포터블 ZIP (Node + Chromium 포함) |
+| `실행.bat` 더블클릭 시 깨진 명령 에러 | UTF-8 한글 bat → **ASCII 전용 `run.bat`** (BOM 없음, CRLF) |
+| 다른 앱이 5151 사용 중이면 잘못된 페이지가 열림 | 서버 **listen 후** 브라우저 오픈, 포트 사용 중이면 **다음 포트**로 전환 |
 
-### 주문내역 고객정보 추출기 (유지)
+### 주문내역 고객정보 추출기
 
 | 문제 | 조치 |
 |------|------|
 | 쿠팡 기본/상세주소 중복 | `joinAddressParts()`로 동일·포함 시 한 번만 사용 |
 | 필드가 붙어 가독성 저하 | 블록 사이 빈 줄 |
 | 네이버 상세주소 줄바꿈 분리 | 기본+상세를 한 줄로 결합 |
+| 고객별 개별 복사가 불편 | 변환 결과 **고객 1명당「복사하기」** → 클릭 시「복사완료」(옅은 빨강 → 진한 빨강) |
 
 ### 아키텍처
 
@@ -241,7 +258,8 @@ npm run build:portable
 | 주문 추출기 분리 | `js/order/`로 이전, 기존 동작 유지 |
 | Parser Pattern | Front/Server Factory 등록만으로 쇼핑몰 확장 |
 | ES6 Modules | import/export, 계층 분리 |
-| 포터블 패키징 | `scripts/build-portable.mjs`로 배포용 폴더·ZIP 생성 |
+| 포터블 패키징 | `build-portable.mjs` + `write-portable-bats.mjs` |
+| 로컬 서버 | 정적 + API 단일 프로세스, 포트 fallback |
 
 ---
 

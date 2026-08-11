@@ -118,6 +118,25 @@ export function buildExportText(customers, mode, pickingProducts) {
 }
 
 /**
+ * 단일 고객 블록 텍스트 (구분선 제외 — 화면/개별 복사용)
+ * @param {import('../model/Customer.js').Customer} customer
+ * @param {string} mode
+ * @returns {string}
+ */
+export function formatCustomerBlock(customer, mode) {
+  const raw =
+    mode === OUTPUT_MODE.DELIVERY
+      ? formatDelivery(customer)
+      : formatBasic(customer);
+  const sep = CUSTOMER_SEPARATOR;
+  let text = String(raw || "").trimEnd();
+  if (text.endsWith(sep)) {
+    text = text.slice(0, -sep.length).trimEnd();
+  }
+  return text;
+}
+
+/**
  * @param {string} text
  * @returns {Promise<void>}
  */
@@ -158,6 +177,7 @@ export const ExportService = {
   formatBasic,
   formatDelivery,
   formatPicking,
+  formatCustomerBlock,
   buildExportText,
   copyAll,
   downloadTxt,

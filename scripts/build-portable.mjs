@@ -141,49 +141,10 @@ execSync(`"${path.join(DIST, "node.exe")}" "${path.join(extractDir, nodeDir, "no
   env: { ...process.env, PATH: `${DIST};${process.env.PATH}` },
 });
 
-// 4. 실행 bat
-console.log("[4/4] 실행 파일 생성...");
-const batContent = `@echo off
-chcp 65001 >nul
-title 전자상거래 업무 자동화 툴
-cd /d "%~dp0"
-
-REM Chromium 확인 및 설치
-echo [준비] Chromium 브라우저를 확인합니다...
-set PLAYWRIGHT_BROWSERS_PATH=%~dp0browsers
-".\\node.exe" -e "import('playwright').then(({chromium})=>chromium.launch({headless:true}).then(b=>{b.close();process.exit(0)})).catch(()=>process.exit(1))" 2>nul
-if %errorlevel% neq 0 (
-  echo [설치] Chromium을 다운로드합니다. 약 1~2분 소요...
-  ".\\node.exe" ".\\node_modules_sys\\npm\\bin\\npx-cli.js" --yes playwright install chromium
-  if %errorlevel% neq 0 (
-    echo.
-    echo [오류] Chromium 설치에 실패했습니다.
-    echo        인터넷 연결을 확인하고 다시 실행해주세요.
-    pause
-    exit /b 1
-  )
-  echo [완료] Chromium 설치 완료.
-)
-
-echo.
-echo ┌──────────────────────────────────────────┐
-echo │                                          │
-echo │   전자상거래 업무 자동화 툴               │
-echo │   E-commerce Automation Toolkit          │
-echo │                                          │
-echo │   → http://localhost:5151                │
-echo │                                          │
-echo │   종료: 이 창을 닫거나 Ctrl+C            │
-echo │                                          │
-echo └──────────────────────────────────────────┘
-echo.
-
-start "" "http://localhost:5151"
-set PLAYWRIGHT_BROWSERS_PATH=%~dp0browsers
-".\\node.exe" ".\\app\\scripts\\dev-server.mjs"
-pause
-`;
-fs.writeFileSync(path.join(DIST, "실행.bat"), batContent, "utf8");
+// 4. Start scripts (ASCII-only, no BOM — Windows cmd safe)
+console.log("[4/4] Creating start scripts...");
+const { writePortableBats } = await import("./write-portable-bats.mjs");
+writePortableBats(DIST);
 
 // Cleanup extracted node
 fs.rmSync(extractDir, { recursive: true, force: true });
@@ -192,8 +153,8 @@ const size = execSync(`powershell -Command "(Get-ChildItem -Recurse '${DIST}' | 
   .toString()
   .trim();
 
-console.log(`\n=== 빌드 완료 ===`);
-console.log(`경로: dist/ecommerce-toolkit/`);
-console.log(`크기: ${Math.round(parseFloat(size))} MB`);
-console.log(`\n배포: 이 폴더를 ZIP으로 압축해서 보내주세요.`);
-console.log(`실행: '실행.bat'을 더블클릭하면 브라우저가 열립니다.\n`);
+console.log(`\n=== Build complete ===`);
+console.log(`Path: dist/ecommerce-toolkit/`);
+console.log(`Size: ~${Math.round(parseFloat(size))} MB`);
+console.log(`\nShip: zip the folder and share it.`);
+console.log(`Run: double-click run.bat (or RUNME.bat)\n`);

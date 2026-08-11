@@ -399,10 +399,17 @@ body {
   border: 1px solid var(--border);
   font-family: var(--font-mono);
   font-size: 0.88rem;
-  white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.55;
   color: var(--text);
+}
+
+.result-output.is-plain {
+  white-space: pre-wrap;
+}
+
+.result-output.has-blocks {
+  white-space: normal;
 }
 
 .result-output mark {
@@ -414,6 +421,86 @@ body {
 
 [data-theme="dark"] .result-output mark {
   background: rgba(255, 196, 0, 0.35);
+}
+
+/* 고객 1명당 블록 + 복사 버튼 */
+.customer-block {
+  margin: 0;
+  padding: 0 0 0.15rem;
+}
+
+.customer-block:not(:first-child) {
+  margin-top: 0.35rem;
+}
+
+.customer-block-text {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: transparent;
+  border: 0;
+}
+
+.btn-copy-customer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.55rem 0 0.45rem;
+  padding: 0.38rem 0.95rem;
+  border: 1px solid #e8a0a0;
+  border-radius: 8px;
+  background: #fad4d4;
+  color: #8b2e2e;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-copy-customer:hover {
+  background: #f5b8b8;
+  border-color: #d98a8a;
+}
+
+.btn-copy-customer:focus-visible {
+  outline: 2px solid #c44;
+  outline-offset: 2px;
+}
+
+.btn-copy-customer.is-copied {
+  background: #c73a3a;
+  border-color: #a82828;
+  color: #fff;
+}
+
+.customer-block-sep {
+  margin: 0.15rem 0 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+[data-theme="dark"] .btn-copy-customer {
+  background: rgba(220, 90, 90, 0.28);
+  border-color: rgba(220, 110, 110, 0.45);
+  color: #ffc9c9;
+}
+
+[data-theme="dark"] .btn-copy-customer:hover {
+  background: rgba(220, 90, 90, 0.4);
+}
+
+[data-theme="dark"] .btn-copy-customer.is-copied {
+  background: #b83333;
+  border-color: #9a2424;
+  color: #fff;
 }
 
 /* Footer */
