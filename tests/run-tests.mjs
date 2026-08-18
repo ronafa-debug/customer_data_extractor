@@ -11,6 +11,11 @@ import { NaverParser } from "../js/order/parser/NaverParser.js";
 import { ParserFactory } from "../js/order/parser/ParserFactory.js";
 import { ERROR_MESSAGE } from "../js/order/constants.js";
 import { Customer } from "../js/order/model/Customer.js";
+import {
+  parsePriceWorkbook,
+  parseWon,
+  rowMatchesQuery,
+} from "../js/price/parsePriceWorkbook.js";
 
 let passed = 0;
 let failed = 0;
@@ -269,6 +274,69 @@ assert(
   !coupangDup[0].address.includes(`${addr} ${addr}`),
   "address 필드에 중복 결합 없음"
 );
+
+console.log("\n=== 제품가격관리 파서 ===");
+const priceWb = {
+  sheets: [
+    {
+      name: "BAM2200_ItemPriceData",
+      data: [
+        ["", "", "", "", "", "품목분류", "품목", "", "", "판매가", "", "", "제안가", "", ""],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "품목명",
+          "규격",
+          "제조사/수입사",
+          "원산지",
+          "공급가",
+          "부가세",
+          "총금액",
+          "공급가",
+          "부가세",
+          "제안가",
+        ],
+        ["", "", "", "", "", "유자소스", "1kg", "유키", "한국", "5,000", "500", "5,500", "4,200", "420", "4,620"],
+        ["", "", "", "", "", "", "", "", "", "9,999", "9", "10,008", "1", "1", "2"],
+        ["", "", "", "", "", "참기름", "500ml", "농협", "국내산", "8000", "800", "8800", "7000", "700", "7700"],
+      ],
+    },
+  ],
+};
+const parsedPrice = parsePriceWorkbook(priceWb);
+assertEq(parsedPrice.rows.length, 2, "빈 품목명 행은 건너뛴다");
+assertEq(parsedPrice.rows[0].supply, 4200, "제안가 그룹 공급가 (판매가 5000 아님)");
+assertEq(parsedPrice.rows[0].vat, 420, "제안가 그룹 부가세");
+assertEq(parsedPrice.rows[0].offer, 4620, "제안가 = 공급가+부가세");
+assertEq(parsedPrice.rows[0].naver, 5313, "네이버가격 = 제안가×1.15 반올림");
+assertEq(parsedPrice.rows[0].coupang, 5775, "쿠팡가격 = 제안가×1.25 반올림");
+assertEq(parseWon("4,200"), 4200, "쉼표 금액 파싱");
+assert(
+  rowMatchesQuery(parsedPrice.rows[0], "유자 소스"),
+  "검색은 공백을 무시하고 품목명에 부분 일치"
+);
+assert(
+  rowMatchesQuery(parsedPrice.rows[1], "농협"),
+  "제조사 검색"
+);
+
+const flatPriceWb = {
+  sheets: [
+    {
+      name: "sheet1",
+      data: [
+        ["품목명", "규격", "제조사", "원산지", "공급가", "부가세", "공급가", "부가세"],
+        ["된장", "1kg", "샘표", "한국", "1000", "100", "800", "80"],
+      ],
+    },
+  ],
+};
+const flatParsed = parsePriceWorkbook(flatPriceWb);
+assertEq(flatParsed.rows[0].supply, 800, "그룹행이 없으면 마지막 공급가(제안가) 사용");
+assertEq(flatParsed.rows[0].offer, 880, "그룹행 없을 때 제안가 합산");
 
 console.log("\n=== Test 6: 미지원/손상 케이스 메시지 ===");
 try {

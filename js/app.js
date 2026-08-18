@@ -5,6 +5,7 @@ import { Router } from "./router/Router.js";
 import { renderHomeView } from "./views/HomeView.js";
 import { renderOrderExtractorView } from "./views/OrderExtractorView.js";
 import { renderProductExtractorView } from "./views/ProductExtractorView.js";
+import { renderPriceManagerView } from "./views/PriceManagerView.js";
 
 const THEME_KEY = "oce-theme";
 
@@ -46,6 +47,10 @@ function main() {
     "/product": {
       title: "제품 정보 추출기",
       render: (el) => renderProductExtractorView(el),
+    },
+    "/price": {
+      title: "제품가격관리",
+      render: (el) => renderPriceManagerView(el),
     },
   });
 

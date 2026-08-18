@@ -19,4 +19,11 @@ export const TOOLS = [
     description: "상품 URL에서 대표·상세·필수정보 이미지를 자동 생성합니다.",
     icon: "🖼",
   },
+  {
+    id: "price-manager",
+    path: "/price",
+    title: "제품가격관리",
+    description: "품목가격 엑셀에서 제안가·네이버·쿠팡 가격표를 만들고 검색합니다.",
+    icon: "₩",
+  },
 ];

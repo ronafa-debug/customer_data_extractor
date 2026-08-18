@@ -80,6 +80,10 @@ body {
   padding: 1.5rem 1rem 2.5rem;
 }
 
+.app-shell.is-wide {
+  max-width: 1400px;
+}
+
 /* Header */
 .app-header {
   margin-bottom: 1.25rem;
@@ -371,10 +375,17 @@ body {
 /* Result */
 .result-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.7rem;
+}
+
+.result-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
 }
 
 .result-title {
@@ -603,6 +614,12 @@ body {
   }
 }
 
+@media (min-width: 960px) {
+  .tool-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
 .tool-card {
   display: flex;
   flex-direction: column;
@@ -781,4 +798,234 @@ body {
   font-size: 0.88rem;
   line-height: 1.45;
   text-align: center;
+}
+
+/* ========== 제품가격관리표 ========== */
+.price-upload-panel {
+  padding: 0.7rem 0.85rem;
+}
+
+.price-upload-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.85rem;
+}
+
+.price-upload-row .drop-zone {
+  flex: 0 0 calc(50% - 0.425rem);
+  max-width: calc(50% - 0.425rem);
+  min-width: 0;
+}
+
+.price-upload-row .drop-zone-inner,
+.price-upload-row .drop-zone.is-compact .drop-zone-inner {
+  padding: 0.55rem 0.5rem;
+}
+
+.price-upload-row .drop-icon,
+.price-upload-row .drop-zone.is-compact .drop-icon {
+  font-size: 1.05rem;
+  margin-bottom: 0.1rem;
+}
+
+.price-upload-row .drop-title {
+  font-size: 0.95rem;
+}
+
+.price-upload-row .drop-hint,
+.price-upload-row .drop-formats {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.price-upload-row .file-meta {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+}
+
+.price-upload-row .file-meta .btn {
+  margin-top: auto;
+  align-self: flex-end;
+}
+
+.price-upload-row .file-meta-row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+}
+
+.price-upload-row .file-name {
+  white-space: normal;
+  word-break: break-all;
+}
+
+@media (max-width: 640px) {
+  .price-upload-row {
+    flex-direction: column;
+  }
+
+  .price-upload-row .drop-zone {
+    flex-basis: auto;
+    max-width: none;
+  }
+}
+
+.drop-zone.is-compact .drop-zone-inner {
+  padding: 1rem;
+}
+
+.drop-zone.is-compact .drop-icon {
+  font-size: 1.2rem;
+  margin-bottom: 0.15rem;
+}
+
+.file-saved-at {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.price-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.price-search-row .search-input {
+  flex: 1 1 220px;
+}
+
+.price-search-meta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  min-width: 7.5rem;
+}
+
+.price-table-wrap {
+  overflow: auto;
+  max-height: 38vh;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.price-table-wrap.is-uploaded {
+  max-height: 32vh;
+}
+
+.price-move-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.9rem 0 1rem;
+}
+
+.price-move-btn {
+  min-width: 3.4rem;
+  font-size: 1.15rem;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.price-empty-row td {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 1.4rem 0.75rem;
+}
+
+.price-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.84rem;
+}
+
+.price-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.55rem;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.price-table tbody td {
+  padding: 0.42rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.price-table tbody tr {
+  scroll-margin-top: 2.6rem;
+}
+
+.price-table tbody tr:hover {
+  background: var(--primary-soft);
+}
+
+.price-col-check {
+  width: 2.2rem;
+  text-align: center;
+}
+
+.price-col-seq {
+  width: 3.2rem;
+  text-align: right;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.price-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.price-col-naver {
+  color: var(--naver);
+}
+
+.price-col-coupang {
+  color: var(--coupang);
+}
+
+.price-table tbody tr.is-search-match {
+  background: rgba(255, 214, 102, 0.2);
+}
+
+.price-table tbody tr.is-search-current {
+  background: rgba(255, 196, 0, 0.45);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+[data-theme="dark"] .price-table tbody tr.is-search-match {
+  background: rgba(255, 196, 0, 0.14);
+}
+
+[data-theme="dark"] .price-table tbody tr.is-search-current {
+  background: rgba(255, 196, 0, 0.28);
+}
+
+@media (max-width: 640px) {
+  .price-table-wrap,
+  .price-table-wrap.is-uploaded {
+    max-height: 40vh;
+  }
+
+  .price-search-meta {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
 }
