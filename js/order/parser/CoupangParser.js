@@ -3,6 +3,7 @@
  */
 import { BaseParser } from "./BaseParser.js";
 import { groupCustomers } from "../utils/GroupCustomer.js";
+import { isDoorDropOnlyMessage } from "../utils/DoorDropMessage.js";
 
 export class CoupangParser extends BaseParser {
   /** @returns {string} */
@@ -81,7 +82,11 @@ export class CoupangParser extends BaseParser {
       const addr1 = cols.address >= 0 ? this.cell(row[cols.address]) : "";
       const addr2 = cols.addressDetail >= 0 ? this.cell(row[cols.addressDetail]) : "";
       const address = this.joinAddressParts(addr1, addr2);
-      const deliveryMessage = cols.message >= 0 ? this.cell(row[cols.message]) : "";
+      const rawDeliveryMessage =
+        cols.message >= 0 ? this.cell(row[cols.message]) : "";
+      const deliveryMessage = isDoorDropOnlyMessage(rawDeliveryMessage)
+        ? ""
+        : rawDeliveryMessage;
       const productName = this.cell(row[cols.product]);
       const quantity = cols.qty >= 0 ? this.parseQuantity(row[cols.qty]) : 1;
 

@@ -25,6 +25,7 @@ import { ParserFactory } from "./parser/ParserFactory.js";
 import { Renderer } from "./views/Renderer.js";
 import {
   deleteOrderBatch,
+  deleteOrderCustomer,
   deleteOrderDate,
   loadOrderBatches,
   saveOrderBatch,
@@ -32,6 +33,7 @@ import {
 import {
   formatOrderDate,
   getBatchesForDate,
+  getCustomerEntriesForDate,
   getCustomersForDate,
   summarizeOrderBatches,
 } from "./model/OrderBatch.js";
@@ -94,7 +96,8 @@ export function mountOrderExtractor(root) {
    *   resultSource: 'none'|'extracted'|'saved',
    *   orderBatches: object[],
    *   selectedDateKey: string,
-   *   saving: boolean
+   *   saving: boolean,
+   *   savedCustomerEntries: Array<{ customer: import('./model/Customer.js').Customer, batchId: string, customerIndex: number }>
    * }} */
   const state = {
     file: null,
@@ -108,10 +111,11 @@ export function mountOrderExtractor(root) {
     orderBatches: [],
     selectedDateKey: "",
     saving: false,
+    savedCustomerEntries: [],
   };
 
   const els = queryElements(root);
-  const renderer = new Renderer(els);
+  const renderer = new Renderer(els, { onDeleteCustomer: removeSavedCustomer });
   /** @type {Array<[EventTarget, string, EventListener]>} */
   const listeners = [];
 
@@ -165,7 +169,8 @@ export function mountOrderExtractor(root) {
     state.lastRenderedText = renderer.renderResult(
       state.customers,
       state.outputMode,
-      /** @type {HTMLInputElement} */ (renderer.els.searchInput).value
+      /** @type {HTMLInputElement} */ (renderer.els.searchInput).value,
+      { allowCustomerDelete: state.resultSource === "saved" }
     );
   }
 
@@ -197,6 +202,7 @@ export function mountOrderExtractor(root) {
     state.outputMode = OUTPUT_MODE.BASIC;
     state.lastRenderedText = "";
     state.resultSource = "none";
+    state.savedCustomerEntries = [];
     const basic = root.querySelector("#modeBasic");
     if (basic) /** @type {HTMLInputElement} */ (basic).checked = true;
     renderer.setResultActionsEnabled(false);
@@ -214,6 +220,7 @@ export function mountOrderExtractor(root) {
     renderer.hideAlert();
     state.customers = [];
     state.resultSource = "none";
+    state.savedCustomerEntries = [];
     renderer.setResultActionsEnabled(false);
     updateSaveButton();
     resetResultTitle();
@@ -257,6 +264,7 @@ export function mountOrderExtractor(root) {
       state.mallLabel = parser.mallLabel;
       state.customers = customers;
       state.resultSource = customers.length ? "extracted" : "none";
+      state.savedCustomerEntries = [];
       renderer.updateMallBadge(parser.mallLabel, parser.mallId);
       refreshView();
       renderer.setResultActionsEnabled(customers.length > 0);
@@ -418,13 +426,14 @@ export function mountOrderExtractor(root) {
 
   /** @param {string} dateKey */
   function openSavedDate(dateKey) {
-    const customers = getCustomersForDate(state.orderBatches, dateKey);
-    if (!customers.length) {
+    const entries = getCustomerEntriesForDate(state.orderBatches, dateKey);
+    if (!entries.length) {
       renderer.showAlert("이 날짜에 표시할 저장 주문이 없습니다.", "error");
       return;
     }
     state.selectedDateKey = dateKey;
-    state.customers = customers;
+    state.savedCustomerEntries = entries;
+    state.customers = entries.map((entry) => entry.customer);
     state.resultSource = "saved";
     /** @type {HTMLInputElement} */ (els.searchInput).value = "";
     renderer.setResultActionsEnabled(true);
@@ -433,9 +442,41 @@ export function mountOrderExtractor(root) {
     refreshView();
     renderHistoryDetail(dateKey);
     renderer.showAlert(
-      `${formatOrderDate(dateKey)} 저장 주문 고객 ${customers.length}명을 열었습니다.`,
+      `${formatOrderDate(dateKey)} 저장 주문 고객 ${entries.length}명을 열었습니다.`,
       "success"
     );
+  }
+
+  /** @param {number} customerIndex */
+  async function removeSavedCustomer(customerIndex) {
+    const entry = state.savedCustomerEntries[customerIndex];
+    if (!entry || state.resultSource !== "saved") return;
+    if (!window.confirm("이 저장 주문 1건을 삭제하시겠습니까?")) return;
+    try {
+      await deleteOrderCustomer(entry.batchId, entry.customerIndex);
+      await reloadHistory();
+      const remaining = getCustomerEntriesForDate(
+        state.orderBatches,
+        state.selectedDateKey
+      );
+      state.savedCustomerEntries = remaining;
+      state.customers = remaining.map((item) => item.customer);
+      renderer.setResultActionsEnabled(remaining.length > 0);
+      if (remaining.length) {
+        refreshView();
+        renderHistoryDetail(state.selectedDateKey);
+      } else {
+        state.resultSource = "none";
+        state.selectedDateKey = "";
+        resetResultTitle();
+        refreshView();
+      }
+      updateSaveButton();
+      renderer.showAlert("저장 주문 1건을 삭제했습니다.", "success");
+    } catch (err) {
+      console.error("[order] history delete customer:", err);
+      renderer.showAlert("저장 주문을 삭제하지 못했습니다.", "error");
+    }
   }
 
   async function removeBatch(id, customerCount) {
@@ -451,12 +492,17 @@ export function mountOrderExtractor(root) {
           state.selectedDateKey
         );
         if (state.resultSource === "saved") {
-          state.customers = remaining;
+          state.savedCustomerEntries = getCustomerEntriesForDate(
+            state.orderBatches,
+            state.selectedDateKey
+          );
+          state.customers = state.savedCustomerEntries.map((entry) => entry.customer);
           renderer.setResultActionsEnabled(remaining.length > 0);
           refreshView();
           if (!remaining.length) {
             state.resultSource = "none";
             state.selectedDateKey = "";
+            state.savedCustomerEntries = [];
             resetResultTitle();
           }
           updateSaveButton();
@@ -481,6 +527,7 @@ export function mountOrderExtractor(root) {
         state.customers = [];
         state.resultSource = "none";
         state.selectedDateKey = "";
+        state.savedCustomerEntries = [];
         renderer.setResultActionsEnabled(false);
         refreshView();
         resetResultTitle();

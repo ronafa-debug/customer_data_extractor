@@ -580,6 +580,38 @@ body {
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
+.customer-block-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.btn-delete-customer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  margin: 0.55rem 0 0.45rem;
+  padding: 0;
+  color: #9b3030;
+  background: transparent;
+  border: 1px solid #e8a0a0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn-delete-customer:hover {
+  background: #fad4d4;
+  border-color: #d98a8a;
+}
+
+.btn-delete-customer:focus-visible {
+  outline: 2px solid #c44;
+  outline-offset: 2px;
+}
+
 .btn-copy-customer:hover {
   background: #f5b8b8;
   border-color: #d98a8a;

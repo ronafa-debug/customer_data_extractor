@@ -11,6 +11,7 @@ import { NaverParser } from "../js/order/parser/NaverParser.js";
 import { ParserFactory } from "../js/order/parser/ParserFactory.js";
 import { ERROR_MESSAGE } from "../js/order/constants.js";
 import { Customer } from "../js/order/model/Customer.js";
+import { isDoorDropOnlyMessage } from "../js/order/utils/DoorDropMessage.js";
 import {
   parsePriceWorkbook,
   parseWon,
@@ -19,11 +20,13 @@ import {
 import {
   createOrderBatch,
   getBatchesForDate,
+  getCustomerEntriesForDate,
   getCustomersForDate,
   normalizeOrderBatches,
   summarizeOrderBatches,
   toLocalDateKey,
   withoutOrderBatch,
+  withoutOrderCustomer,
   withoutOrderDate,
 } from "../js/order/model/OrderBatch.js";
 
@@ -192,6 +195,67 @@ assertEq(
 );
 assertEq(coupangCustomers[0].zipcode, "06234", "쿠팡 우편번호");
 
+console.log("\n=== 쿠팡 문 앞 배송메시지 필터 ===");
+const doorDropOnlyMessages = [
+  "문 앞",
+  "문앞",
+  "집 앞",
+  "집앞",
+  " 문 앞 ",
+  "문 앞에 놓아주세요",
+  "문앞에 놔주세요",
+  "문 앞에 두고 가주세요",
+  "문앞에 두세요",
+  "문 앞에 놔두세요",
+  "문 앞에 부탁드립니다",
+  "문 앞 배송 부탁드립니다",
+];
+for (const message of doorDropOnlyMessages) {
+  assert(isDoorDropOnlyMessage(message), `제거: ${message}`);
+}
+
+const deliveryMessagesToKeep = [
+  "문 앞에 놓고 문자 주세요",
+  "문 앞에 두고 전화주세요",
+  "문 앞에 두시고 벨 눌러주세요",
+  "문 앞에 놓고 사진 찍어주세요",
+  "문 앞에 놓기 전에 전화주세요",
+  "문 앞에 두지 말고 전화주세요",
+  "문 앞 말고 경비실에 맡겨주세요",
+  "공동현관 비밀번호 1234, 문 앞에 놓아주세요",
+  "문 앞에 두고 아이가 자고 있으니 벨 누르지 마세요",
+  "부재 시 문 앞에 놓아주세요",
+  "경비실에 맡겨주세요",
+];
+for (const message of deliveryMessagesToKeep) {
+  assert(!isDoorDropOnlyMessage(message), `유지: ${message}`);
+}
+
+const coupangDoorDropWb = {
+  fileName: "coupang-door-drop.xlsx",
+  sheets: [
+    {
+      name: "Sheet1",
+      data: [
+        ["수취인이름", "수취인주소", "상품명", "배송메시지"],
+        ["문앞제거", "서울시", "상품 A", "문 앞에 놓아주세요"],
+        ["추가요청유지", "부산시", "상품 B", "문 앞에 놓고 문자 주세요"],
+      ],
+    },
+  ],
+};
+const coupangDoorDropCustomers = new CoupangParser().parse(coupangDoorDropWb);
+assertEq(
+  coupangDoorDropCustomers[0].deliveryMessage,
+  "",
+  "쿠팡 문 앞 단독 메시지는 빈 메시지로 처리"
+);
+assertEq(
+  coupangDoorDropCustomers[1].deliveryMessage,
+  "문 앞에 놓고 문자 주세요",
+  "쿠팡 추가 요청 메시지는 원문 유지"
+);
+
 console.log("\n=== Test 2: 네이버 자동 인식 + 파싱 ===");
 const naverWb = {
   fileName: "naver.xlsx",
@@ -238,6 +302,22 @@ assertEq(
   "네이버 상품명 추출"
 );
 assertEq(naverCustomers[0].products[0].quantity, 5, "네이버 수량");
+
+const naverDoorDropWb = {
+  ...naverWb,
+  sheets: [
+    {
+      ...naverWb.sheets[0],
+      data: naverWb.sheets[0].data.map((row) => [...row]),
+    },
+  ],
+};
+naverDoorDropWb.sheets[0].data[2][8] = "문 앞에 놓아주세요";
+assertEq(
+  new NaverParser().parse(naverDoorDropWb)[0].deliveryMessage,
+  "문 앞에 놓아주세요",
+  "네이버 문 앞 메시지는 변경하지 않음"
+);
 
 console.log("\n=== 쿠팡 주소 중복 제거 ===");
 const addr = "대구광역시 달서구 구마로 238 세현빌딩 2층 광피씨방 ( 송현동 )";
@@ -401,6 +481,24 @@ const afterBatchSummary = summarizeOrderBatches(afterBatchDelete).find(
 );
 assertEq(afterBatchSummary?.customerCount, 1, "batch 삭제 후 고객 수 갱신");
 assertEq(afterBatchSummary?.batchCount, 1, "batch 삭제 후 batch 수 갱신");
+
+const customerEntries = getCustomerEntriesForDate(allBatches, "2026-09-28");
+assertEq(customerEntries.length, 3, "저장 고객별 batch 위치 조회");
+assertEq(customerEntries[1].batchId, "batch-b", "저장 고객의 batch ID 유지");
+assertEq(customerEntries[1].customerIndex, 0, "저장 고객의 batch 내 위치 유지");
+const afterCustomerDelete = withoutOrderCustomer(allBatches, "batch-b", 0);
+assertEq(
+  getCustomersForDate(afterCustomerDelete, "2026-09-28").length,
+  2,
+  "저장 고객 한 명만 삭제"
+);
+assertEq(
+  getBatchesForDate(afterCustomerDelete, "2026-09-28")[1].customerCount,
+  1,
+  "개별 삭제 후 batch 고객 수 갱신"
+);
+const afterLastCustomerDelete = withoutOrderCustomer(allBatches, "batch-a", 0);
+assertEq(afterLastCustomerDelete.length, 2, "마지막 고객 삭제 시 빈 batch 정리");
 
 const afterDateDelete = withoutOrderDate(allBatches, "2026-09-28");
 assertEq(afterDateDelete.length, 1, "날짜 전체 삭제");

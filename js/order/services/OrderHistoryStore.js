@@ -69,6 +69,40 @@ export async function deleteOrderBatch(id) {
   await withStore("readwrite", (store) => store.delete(id));
 }
 
+/**
+ * @param {string} batchId
+ * @param {number} customerIndex
+ */
+export async function deleteOrderCustomer(batchId, customerIndex) {
+  const index = Number(customerIndex);
+  if (!Number.isInteger(index) || index < 0) return;
+
+  const db = await openDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const req = store.get(batchId);
+      req.onsuccess = () => {
+        const batch = normalizeOrderBatches([req.result])[0];
+        if (!batch || index >= batch.customers.length) return;
+        const customers = batch.customers.filter((_, i) => i !== index);
+        if (customers.length) {
+          store.put({ ...batch, customers, customerCount: customers.length });
+        } else {
+          store.delete(batchId);
+        }
+      };
+      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || req.error);
+      tx.onabort = () => reject(tx.error || new Error("개별 주문 삭제가 취소되었습니다."));
+    });
+  } finally {
+    db.close();
+  }
+}
+
 /** @param {string} dateKey */
 export async function deleteOrderDate(dateKey) {
   const db = await openDb();

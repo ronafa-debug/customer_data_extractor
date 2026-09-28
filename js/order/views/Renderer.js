@@ -15,8 +15,9 @@ export class Renderer {
   /**
    * @param {Record<string, HTMLElement>} els
    */
-  constructor(els) {
+  constructor(els, { onDeleteCustomer } = {}) {
     this.els = els;
+    this.onDeleteCustomer = onDeleteCustomer;
     /** @type {string[]} */
     this._blockTexts = [];
     this.els.resultOutput?.addEventListener("click", (e) => {
@@ -29,6 +30,11 @@ export class Renderer {
    */
   async #handleResultClick(e) {
     const target = /** @type {HTMLElement} */ (e.target);
+    const deleteBtn = target.closest?.(".btn-delete-customer");
+    if (deleteBtn && this.els.resultOutput.contains(deleteBtn)) {
+      this.onDeleteCustomer?.(Number(deleteBtn.getAttribute("data-customer-index")));
+      return;
+    }
     const btn = target.closest?.(".btn-copy-customer");
     if (!btn || !this.els.resultOutput.contains(btn)) return;
 
@@ -140,7 +146,7 @@ export class Renderer {
    * 고객별 블록 + 복사 버튼
    * @param {string[]} blocks
    */
-  #renderCustomerBlocks(blocks) {
+  #renderCustomerBlocks(blocks, customerIndexes = []) {
     this._blockTexts = blocks.slice();
     const el = this.els.resultOutput;
     el.classList.remove("is-plain");
@@ -168,7 +174,21 @@ export class Renderer {
       sep.setAttribute("aria-hidden", "true");
       sep.textContent = CUSTOMER_SEPARATOR;
 
-      article.append(pre, btn, sep);
+      const actions = document.createElement("div");
+      actions.className = "customer-block-actions";
+      actions.appendChild(btn);
+      if (Number.isInteger(customerIndexes[index])) {
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "btn-delete-customer";
+        deleteBtn.dataset.customerIndex = String(customerIndexes[index]);
+        deleteBtn.textContent = "🗑";
+        deleteBtn.setAttribute("aria-label", `${index + 1}번째 저장 주문 삭제`);
+        deleteBtn.title = "이 주문 삭제";
+        actions.appendChild(deleteBtn);
+      }
+
+      article.append(pre, actions, sep);
       frag.appendChild(article);
     });
     el.appendChild(frag);
@@ -180,7 +200,7 @@ export class Renderer {
    * @param {string} query
    * @returns {string} 전체 복사·다운로드용 텍스트
    */
-  renderResult(customers, mode, query) {
+  renderResult(customers, mode, query, { allowCustomerDelete = false } = {}) {
     if (!customers.length) {
       this.#renderPlainMessage("파일을 업로드한 뒤 변환을 눌러주세요.");
       this.els.resultCount.textContent = "";
@@ -211,7 +231,10 @@ export class Renderer {
         );
       } else {
         const blocks = filtered.map((c) => formatCustomerBlock(c, mode));
-        this.#renderCustomerBlocks(blocks);
+        const customerIndexes = allowCustomerDelete
+          ? filtered.map((customer) => customers.indexOf(customer))
+          : [];
+        this.#renderCustomerBlocks(blocks, customerIndexes);
         countLabel = `고객 ${filtered.length}명`;
       }
     }

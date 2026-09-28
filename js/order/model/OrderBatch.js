@@ -172,9 +172,44 @@ export function getCustomersForDate(batches, dateKey) {
   );
 }
 
+/**
+ * 저장된 고객과 원본 batch 내 위치를 함께 반환한다.
+ * @param {unknown[]} batches
+ * @param {string} dateKey
+ */
+export function getCustomerEntriesForDate(batches, dateKey) {
+  return getBatchesForDate(batches, dateKey).flatMap((batch) =>
+    batch.customers.map((customer, customerIndex) => ({
+      customer: restoreCustomer(customer),
+      batchId: batch.id,
+      customerIndex,
+    }))
+  );
+}
+
 /** @param {unknown[]} batches @param {string} id */
 export function withoutOrderBatch(batches, id) {
   return normalizeOrderBatches(batches).filter((batch) => batch.id !== id);
+}
+
+/**
+ * 특정 저장 기록 안의 고객 한 명을 제외한다.
+ * 마지막 고객이면 빈 batch도 함께 제외한다.
+ * @param {unknown[]} batches
+ * @param {string} batchId
+ * @param {number} customerIndex
+ */
+export function withoutOrderCustomer(batches, batchId, customerIndex) {
+  const index = Number(customerIndex);
+  return normalizeOrderBatches(batches).flatMap((batch) => {
+    if (batch.id !== batchId || !Number.isInteger(index) || index < 0 || index >= batch.customers.length) {
+      return [batch];
+    }
+    const customers = batch.customers.filter((_, i) => i !== index);
+    return customers.length
+      ? [{ ...batch, customers, customerCount: customers.length }]
+      : [];
+  });
 }
 
 /** @param {unknown[]} batches @param {string} dateKey */
