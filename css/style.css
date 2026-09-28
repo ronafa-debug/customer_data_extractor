@@ -399,6 +399,113 @@ body {
   color: var(--text-muted);
 }
 
+.order-history-note {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.order-history-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.order-history-empty {
+  margin: 0;
+  padding: 1rem;
+  color: var(--text-muted);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.order-history-date {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto auto;
+  gap: 1rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.order-history-date:hover,
+.order-history-date:focus-visible {
+  border-color: var(--primary);
+}
+
+.order-history-date span {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.order-history-arrow {
+  font-size: 1rem !important;
+}
+
+.order-history-detail {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.order-history-detail-header,
+.order-history-batch {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.order-history-detail-header h3,
+.order-history-batch-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.order-history-detail-header p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.order-history-batch-title {
+  margin-top: 1rem;
+}
+
+.order-history-batches {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+
+.order-history-batch {
+  padding: 0.7rem 0.85rem;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .order-history-date {
+    grid-template-columns: 1fr auto;
+  }
+
+  .order-history-date > span:not(.order-history-arrow) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .order-history-detail-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .result-output {
   margin: 0;
   min-height: 280px;

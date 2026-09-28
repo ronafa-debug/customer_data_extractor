@@ -23,6 +23,18 @@ import { mergeAllProducts } from "./utils/MergeProduct.js";
 import { calculateStatistics } from "./services/StatisticsService.js";
 import { ParserFactory } from "./parser/ParserFactory.js";
 import { Renderer } from "./views/Renderer.js";
+import {
+  deleteOrderBatch,
+  deleteOrderDate,
+  loadOrderBatches,
+  saveOrderBatch,
+} from "./services/OrderHistoryStore.js";
+import {
+  formatOrderDate,
+  getBatchesForDate,
+  getCustomersForDate,
+  summarizeOrderBatches,
+} from "./model/OrderBatch.js";
 
 /**
  * @param {ParentNode} root
@@ -37,6 +49,7 @@ function queryElements(root) {
     "fileName",
     "clearFileBtn",
     "convertBtn",
+    "saveOrderBtn",
     "copyBtn",
     "downloadBtn",
     "resetBtn",
@@ -49,6 +62,9 @@ function queryElements(root) {
     "alertBox",
     "resultOutput",
     "resultCount",
+    "resultTitle",
+    "orderHistoryList",
+    "orderHistoryDetail",
     "themeToggle",
   ];
 
@@ -74,7 +90,11 @@ export function mountOrderExtractor(root) {
    *   mallLabel: string,
    *   customers: import('./model/Customer.js').Customer[],
    *   outputMode: string,
-   *   lastRenderedText: string
+   *   lastRenderedText: string,
+   *   resultSource: 'none'|'extracted'|'saved',
+   *   orderBatches: object[],
+   *   selectedDateKey: string,
+   *   saving: boolean
    * }} */
   const state = {
     file: null,
@@ -84,6 +104,10 @@ export function mountOrderExtractor(root) {
     customers: [],
     outputMode: OUTPUT_MODE.BASIC,
     lastRenderedText: "",
+    resultSource: "none",
+    orderBatches: [],
+    selectedDateKey: "",
+    saving: false,
   };
 
   const els = queryElements(root);
@@ -145,6 +169,18 @@ export function mountOrderExtractor(root) {
     );
   }
 
+  function resetResultTitle() {
+    els.resultTitle.textContent = "변환 결과";
+  }
+
+  function updateSaveButton() {
+    renderer.setSaveEnabled(
+      state.resultSource === "extracted" &&
+        state.customers.length > 0 &&
+        !state.saving
+    );
+  }
+
   function resetFile() {
     state.file = null;
     state.workbook = null;
@@ -160,12 +196,15 @@ export function mountOrderExtractor(root) {
     state.customers = [];
     state.outputMode = OUTPUT_MODE.BASIC;
     state.lastRenderedText = "";
+    state.resultSource = "none";
     const basic = root.querySelector("#modeBasic");
     if (basic) /** @type {HTMLInputElement} */ (basic).checked = true;
     renderer.setResultActionsEnabled(false);
+    updateSaveButton();
     renderer.setResetEnabled(false);
     refreshView();
     renderer.hideAlert();
+    resetResultTitle();
   }
 
   /**
@@ -174,7 +213,10 @@ export function mountOrderExtractor(root) {
   async function handleFile(file) {
     renderer.hideAlert();
     state.customers = [];
+    state.resultSource = "none";
     renderer.setResultActionsEnabled(false);
+    updateSaveButton();
+    resetResultTitle();
     refreshView();
     if (!file) return;
 
@@ -214,9 +256,12 @@ export function mountOrderExtractor(root) {
       state.mallId = parser.mallId;
       state.mallLabel = parser.mallLabel;
       state.customers = customers;
+      state.resultSource = customers.length ? "extracted" : "none";
       renderer.updateMallBadge(parser.mallLabel, parser.mallId);
       refreshView();
       renderer.setResultActionsEnabled(customers.length > 0);
+      updateSaveButton();
+      resetResultTitle();
       renderer.setResetEnabled(true);
       if (!customers.length) {
         renderer.showAlert(ERROR_MESSAGE.NO_ORDER_DATA, "error");
@@ -232,6 +277,220 @@ export function mountOrderExtractor(root) {
       renderer.showAlert(err.message || "변환 중 오류가 발생했습니다.", "error");
     } finally {
       renderer.setConvertEnabled(Boolean(state.workbook));
+    }
+  }
+
+  /** @param {Date} date */
+  function formatTime(date) {
+    return new Intl.DateTimeFormat("ko-KR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(date);
+  }
+
+  function renderHistory() {
+    const summaries = summarizeOrderBatches(state.orderBatches);
+    els.orderHistoryList.replaceChildren();
+
+    if (!summaries.length) {
+      const empty = document.createElement("p");
+      empty.className = "order-history-empty";
+      empty.textContent = "아직 저장된 주문내역이 없습니다.";
+      els.orderHistoryList.appendChild(empty);
+      els.orderHistoryDetail.classList.add("d-none");
+      els.orderHistoryDetail.replaceChildren();
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    for (const summary of summaries) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "order-history-date";
+      button.dataset.dateKey = summary.dateKey;
+
+      const date = document.createElement("strong");
+      date.textContent = formatOrderDate(summary.dateKey);
+      const meta = document.createElement("span");
+      meta.textContent = `고객 ${summary.customerCount}명 · 저장 ${summary.batchCount}회`;
+      const arrow = document.createElement("span");
+      arrow.className = "order-history-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = ">";
+      button.append(date, meta, arrow);
+      frag.appendChild(button);
+    }
+    els.orderHistoryList.appendChild(frag);
+  }
+
+  /** @param {string} dateKey */
+  function renderHistoryDetail(dateKey) {
+    const batches = getBatchesForDate(state.orderBatches, dateKey);
+    const total = batches.reduce((sum, batch) => sum + batch.customerCount, 0);
+    const detail = els.orderHistoryDetail;
+    detail.replaceChildren();
+    if (!batches.length) {
+      detail.classList.add("d-none");
+      return;
+    }
+
+    const header = document.createElement("div");
+    header.className = "order-history-detail-header";
+    const titleWrap = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = formatOrderDate(dateKey);
+    const count = document.createElement("p");
+    count.textContent = `전체 고객 ${total}명 · 저장 ${batches.length}회`;
+    titleWrap.append(title, count);
+
+    const deleteDateBtn = document.createElement("button");
+    deleteDateBtn.type = "button";
+    deleteDateBtn.className = "btn btn-sm btn-outline-danger";
+    deleteDateBtn.dataset.deleteDate = dateKey;
+    deleteDateBtn.textContent = "이 날짜 전체 삭제";
+    header.append(titleWrap, deleteDateBtn);
+
+    const label = document.createElement("h4");
+    label.className = "order-history-batch-title";
+    label.textContent = "저장 기록";
+    const list = document.createElement("div");
+    list.className = "order-history-batches";
+    for (const batch of batches) {
+      const row = document.createElement("div");
+      row.className = "order-history-batch";
+      const meta = document.createElement("span");
+      const createdAt = new Date(batch.createdAt);
+      meta.textContent = `${formatTime(createdAt)} · 고객 ${batch.customerCount}명`;
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn btn-sm btn-outline-danger";
+      del.dataset.deleteBatch = batch.id;
+      del.dataset.customerCount = String(batch.customerCount);
+      del.textContent = "삭제";
+      row.append(meta, del);
+      list.appendChild(row);
+    }
+    detail.append(header, label, list);
+    detail.classList.remove("d-none");
+  }
+
+  async function reloadHistory() {
+    try {
+      state.orderBatches = await loadOrderBatches();
+      renderHistory();
+      if (state.selectedDateKey) {
+        renderHistoryDetail(state.selectedDateKey);
+      }
+    } catch (err) {
+      console.error("[order] history load:", err);
+      els.orderHistoryList.textContent =
+        "저장된 주문내역을 불러오지 못했습니다. 기존 Excel 변환 기능은 계속 사용할 수 있습니다.";
+    }
+  }
+
+  async function saveCurrentOrders() {
+    if (state.saving) return;
+    if (state.resultSource !== "extracted" || !state.customers.length) {
+      renderer.showAlert("저장할 고객정보가 없습니다.", "error");
+      return;
+    }
+    state.saving = true;
+    updateSaveButton();
+    try {
+      const batch = await saveOrderBatch(state.customers);
+      await reloadHistory();
+      renderer.showAlert(
+        `✓ ${formatOrderDate(batch.dateKey)} 주문내역에 고객 ${batch.customerCount}명을 저장했습니다.`,
+        "success"
+      );
+    } catch (err) {
+      console.error("[order] history save:", err);
+      renderer.showAlert(
+        "주문내역을 이 브라우저에 저장하지 못했습니다. 추출 결과는 그대로 유지됩니다.",
+        "error"
+      );
+    } finally {
+      state.saving = false;
+      updateSaveButton();
+    }
+  }
+
+  /** @param {string} dateKey */
+  function openSavedDate(dateKey) {
+    const customers = getCustomersForDate(state.orderBatches, dateKey);
+    if (!customers.length) {
+      renderer.showAlert("이 날짜에 표시할 저장 주문이 없습니다.", "error");
+      return;
+    }
+    state.selectedDateKey = dateKey;
+    state.customers = customers;
+    state.resultSource = "saved";
+    /** @type {HTMLInputElement} */ (els.searchInput).value = "";
+    renderer.setResultActionsEnabled(true);
+    updateSaveButton();
+    els.resultTitle.textContent = `${formatOrderDate(dateKey)} 저장된 주문내역`;
+    refreshView();
+    renderHistoryDetail(dateKey);
+    renderer.showAlert(
+      `${formatOrderDate(dateKey)} 저장 주문 고객 ${customers.length}명을 열었습니다.`,
+      "success"
+    );
+  }
+
+  async function removeBatch(id, customerCount) {
+    if (!window.confirm(
+      `이 저장 기록을 삭제하시겠습니까?\n저장된 고객 ${customerCount}명의 정보가 삭제됩니다.`
+    )) return;
+    try {
+      await deleteOrderBatch(id);
+      await reloadHistory();
+      if (state.selectedDateKey) {
+        const remaining = getCustomersForDate(
+          state.orderBatches,
+          state.selectedDateKey
+        );
+        if (state.resultSource === "saved") {
+          state.customers = remaining;
+          renderer.setResultActionsEnabled(remaining.length > 0);
+          refreshView();
+          if (!remaining.length) {
+            state.resultSource = "none";
+            state.selectedDateKey = "";
+            resetResultTitle();
+          }
+          updateSaveButton();
+        }
+      }
+      renderer.showAlert("저장 기록을 삭제했습니다.", "success");
+    } catch (err) {
+      console.error("[order] history delete batch:", err);
+      renderer.showAlert("저장 기록을 삭제하지 못했습니다.", "error");
+    }
+  }
+
+  async function removeDate(dateKey) {
+    const batches = getBatchesForDate(state.orderBatches, dateKey);
+    const total = batches.reduce((sum, batch) => sum + batch.customerCount, 0);
+    if (!window.confirm(
+      `${formatOrderDate(dateKey)}에 저장된 모든 주문내역을 삭제하시겠습니까?\n총 고객 ${total}명의 저장 정보가 삭제됩니다.`
+    )) return;
+    try {
+      await deleteOrderDate(dateKey);
+      if (state.resultSource === "saved" && state.selectedDateKey === dateKey) {
+        state.customers = [];
+        state.resultSource = "none";
+        state.selectedDateKey = "";
+        renderer.setResultActionsEnabled(false);
+        refreshView();
+        resetResultTitle();
+        updateSaveButton();
+      }
+      await reloadHistory();
+      renderer.showAlert("해당 날짜의 저장 주문을 모두 삭제했습니다.", "success");
+    } catch (err) {
+      console.error("[order] history delete date:", err);
+      renderer.showAlert("날짜별 저장 주문을 삭제하지 못했습니다.", "error");
     }
   }
 
@@ -285,11 +544,15 @@ export function mountOrderExtractor(root) {
     on(els.clearFileBtn, "click", () => {
       resetFile();
       state.customers = [];
+      state.resultSource = "none";
       renderer.setResultActionsEnabled(false);
+      updateSaveButton();
+      resetResultTitle();
       refreshView();
       renderer.hideAlert();
     });
     on(els.convertBtn, "click", () => convert());
+    on(els.saveOrderBtn, "click", () => saveCurrentOrders());
     on(els.copyBtn, "click", async () => {
       try {
         await copyAll(getCurrentText());
@@ -309,6 +572,27 @@ export function mountOrderExtractor(root) {
       }
     });
     on(els.resetBtn, "click", () => fullReset());
+    on(els.orderHistoryList, "click", (e) => {
+      const button = /** @type {HTMLElement} */ (e.target).closest?.(
+        "[data-date-key]"
+      );
+      const dateKey = button?.getAttribute("data-date-key");
+      if (dateKey) openSavedDate(dateKey);
+    });
+    on(els.orderHistoryDetail, "click", (e) => {
+      const target = /** @type {HTMLElement} */ (e.target);
+      const batchButton = target.closest?.("[data-delete-batch]");
+      if (batchButton) {
+        removeBatch(
+          batchButton.getAttribute("data-delete-batch") || "",
+          Number(batchButton.getAttribute("data-customer-count")) || 0
+        );
+        return;
+      }
+      const dateButton = target.closest?.("[data-delete-date]");
+      const dateKey = dateButton?.getAttribute("data-delete-date");
+      if (dateKey) removeDate(dateKey);
+    });
 
     const onSearch = debounce(() => refreshView(), SEARCH_DEBOUNCE_MS);
     on(els.searchInput, "input", /** @type {EventListener} */ (onSearch));
@@ -323,6 +607,7 @@ export function mountOrderExtractor(root) {
 
   initTheme();
   bindEvents();
+  reloadHistory();
 
   return {
     destroy() {

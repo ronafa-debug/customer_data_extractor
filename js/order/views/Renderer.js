@@ -230,6 +230,11 @@ export class Renderer {
     if (!enabled) this.els.searchInput.value = "";
   }
 
+  /** @param {boolean} enabled */
+  setSaveEnabled(enabled) {
+    this.els.saveOrderBtn.disabled = !enabled;
+  }
+
   /**
    * @param {boolean} enabled
    */

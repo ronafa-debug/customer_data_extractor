@@ -45,6 +45,7 @@ export function renderOrderExtractorView(root) {
         <div class="control-row">
           <div class="btn-group-actions">
             <button type="button" id="convertBtn" class="btn btn-primary" disabled>변환</button>
+            <button type="button" id="saveOrderBtn" class="btn btn-outline-primary" disabled>저장하기</button>
             <button type="button" id="copyBtn" class="btn btn-outline-primary" disabled>복사</button>
             <button type="button" id="downloadBtn" class="btn btn-outline-primary" disabled>TXT</button>
             <button type="button" id="resetBtn" class="btn btn-outline-secondary" disabled>초기화</button>
@@ -77,14 +78,27 @@ export function renderOrderExtractorView(root) {
 
       <section class="panel result-panel">
         <div class="result-header">
-          <h2 class="result-title">변환 결과</h2>
+          <h2 class="result-title" id="resultTitle">변환 결과</h2>
           <span id="resultCount" class="result-count"></span>
         </div>
         <div id="resultOutput" class="result-output is-plain" aria-live="polite">파일을 업로드한 뒤 변환을 눌러주세요.</div>
       </section>
 
+      <section class="panel order-history-panel" aria-labelledby="orderHistoryTitle">
+        <div class="result-header">
+          <div>
+            <h2 class="result-title" id="orderHistoryTitle">저장된 주문내역</h2>
+            <p class="order-history-note">저장된 주문정보는 현재 브라우저에만 저장됩니다. 브라우저 데이터 삭제 시 함께 삭제될 수 있습니다.</p>
+          </div>
+        </div>
+        <div id="orderHistoryList" class="order-history-list" aria-live="polite">
+          저장된 주문내역을 불러오는 중입니다…
+        </div>
+        <div id="orderHistoryDetail" class="order-history-detail d-none"></div>
+      </section>
+
       <footer class="app-footer">
-        <p>주문 데이터는 브라우저에서만 처리됩니다. 개인정보는 외부로 전송·저장되지 않습니다.</p>
+        <p>주문 데이터와 저장된 주문내역은 이 브라우저에서만 처리됩니다. 개인정보는 외부로 전송되지 않습니다.</p>
       </footer>
     </div>
   `;

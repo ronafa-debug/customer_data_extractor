@@ -16,6 +16,16 @@ import {
   parseWon,
   rowMatchesQuery,
 } from "../js/price/parsePriceWorkbook.js";
+import {
+  createOrderBatch,
+  getBatchesForDate,
+  getCustomersForDate,
+  normalizeOrderBatches,
+  summarizeOrderBatches,
+  toLocalDateKey,
+  withoutOrderBatch,
+  withoutOrderDate,
+} from "../js/order/model/OrderBatch.js";
 
 let passed = 0;
 let failed = 0;
@@ -337,6 +347,91 @@ const flatPriceWb = {
 const flatParsed = parsePriceWorkbook(flatPriceWb);
 assertEq(flatParsed.rows[0].supply, 800, "그룹행이 없으면 마지막 공급가(제안가) 사용");
 assertEq(flatParsed.rows[0].offer, 880, "그룹행 없을 때 제안가 합산");
+
+console.log("\n=== 날짜별 주문 저장 batch ===");
+const savedCustomerA = new Customer({
+  name: "고객A",
+  phone: "010-0000-0001",
+  address: "테스트 주소 1",
+  zipcode: "00001",
+  deliveryMessage: "문 앞",
+  products: mergeProducts([{ name: "상품A 1kg", quantity: 1 }]),
+});
+const savedCustomerB = new Customer({
+  name: "고객B",
+  phone: "010-0000-0002",
+  address: "테스트 주소 2",
+  zipcode: "00002",
+  products: mergeProducts([{ name: "상품B 500g", quantity: 2 }]),
+});
+
+const batchA = createOrderBatch(
+  [savedCustomerA],
+  new Date(2026, 8, 28, 9, 15),
+  () => "batch-a"
+);
+assertEq(batchA.id, "batch-a", "첫 batch 저장 ID");
+assertEq(batchA.dateKey, "2026-09-28", "첫 batch local date key");
+assertEq(batchA.customerCount, 1, "첫 batch 고객 수");
+
+const batchB = createOrderBatch(
+  [savedCustomerA, savedCustomerB],
+  new Date(2026, 8, 28, 14, 32),
+  () => "batch-b"
+);
+const batchNextDay = createOrderBatch(
+  [savedCustomerB],
+  new Date(2026, 8, 29, 8, 5),
+  () => "batch-next"
+);
+const allBatches = [batchA, batchB, batchNextDay];
+assertEq(getBatchesForDate(allBatches, "2026-09-28").length, 2, "같은 날짜 두 번째 batch append");
+assertEq(getBatchesForDate(allBatches, "2026-09-28")[0].id, "batch-a", "기존 batch를 덮어쓰지 않음");
+
+const summaries = summarizeOrderBatches(allBatches);
+assertEq(summaries[1].customerCount, 3, "날짜별 전체 고객 수 계산");
+assertEq(summaries[1].batchCount, 2, "날짜별 batch 수 계산");
+assertEq(summaries.length, 2, "여러 날짜 분리 저장");
+assertEq(summaries[0].dateKey, "2026-09-29", "최신 날짜 우선 정렬");
+
+const afterBatchDelete = withoutOrderBatch(allBatches, "batch-b");
+assertEq(afterBatchDelete.length, 2, "batch 하나만 삭제");
+const afterBatchSummary = summarizeOrderBatches(afterBatchDelete).find(
+  (item) => item.dateKey === "2026-09-28"
+);
+assertEq(afterBatchSummary?.customerCount, 1, "batch 삭제 후 고객 수 갱신");
+assertEq(afterBatchSummary?.batchCount, 1, "batch 삭제 후 batch 수 갱신");
+
+const afterDateDelete = withoutOrderDate(allBatches, "2026-09-28");
+assertEq(afterDateDelete.length, 1, "날짜 전체 삭제");
+assertEq(afterDateDelete[0].dateKey, "2026-09-29", "날짜 삭제가 다른 날짜에 영향 없음");
+
+try {
+  createOrderBatch([], new Date(2026, 8, 28), () => "empty");
+  assert(false, "빈 고객 배열 저장 방지");
+} catch (err) {
+  assertEq(err.message, "저장할 고객정보가 없습니다.", "빈 고객 배열 저장 방지");
+}
+
+assertEq(
+  toLocalDateKey(new Date(2026, 8, 28, 23, 30)),
+  "2026-09-28",
+  "UTC 변환 없이 local date key 생성"
+);
+const reloaded = normalizeOrderBatches(JSON.parse(JSON.stringify(allBatches)));
+assertEq(reloaded.length, 3, "저장 후 다시 읽기");
+const mergedSavedCustomers = getCustomersForDate(reloaded, "2026-09-28");
+assertEq(mergedSavedCustomers.length, 3, "여러 batch 고객 데이터 합치기");
+assert(mergedSavedCustomers[0] instanceof Customer, "저장 고객을 Customer 모델로 복원");
+savedCustomerA.name = "화면에서 변경된 이름";
+assertEq(batchA.customers[0].name, "고객A", "저장 batch는 원본 Customer 변경과 분리");
+mergedSavedCustomers[0].name = "다시 연 화면에서 변경";
+assertEq(batchA.customers[0].name, "고객A", "복원 Customer 변경이 저장 원본을 mutate하지 않음");
+assertEq(
+  normalizeOrderBatches([{ id: "broken", dateKey: "2026-09-28" }]).length,
+  0,
+  "손상된 batch 레코드 무시"
+);
 
 console.log("\n=== Test 6: 미지원/손상 케이스 메시지 ===");
 try {
