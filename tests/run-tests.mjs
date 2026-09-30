@@ -11,7 +11,13 @@ import { NaverParser } from "../js/order/parser/NaverParser.js";
 import { ParserFactory } from "../js/order/parser/ParserFactory.js";
 import { ERROR_MESSAGE } from "../js/order/constants.js";
 import { Customer } from "../js/order/model/Customer.js";
+import { makePlatformProductKey, mergeOrderProducts } from "../js/order/model/StandardOrderRow.js";
 import { isDoorDropOnlyMessage } from "../js/order/utils/DoorDropMessage.js";
+import { calculateMarketplacePrices, ceilToTenWon } from "../js/price/priceCalculator.js";
+import { parseWholesaleWorkbook, parseWholesalePrice } from "../js/price/parseWholesaleWorkbook.js";
+import { makeWholesaleProductId, normalizeProductKeyText } from "../js/price/productNormalizer.js";
+import { validateManualProductInput } from "../js/price/productPriceStore.js";
+import { buildOrderPricingRows, getSalesPlatformsForProduct } from "../js/price/orderProductPricingService.js";
 import {
   parsePriceWorkbook,
   parseWon,
@@ -22,8 +28,10 @@ import {
   getBatchesForDate,
   getCustomerEntriesForDate,
   getCustomersForDate,
+  getOrderProductsForDate,
   normalizeOrderBatches,
   summarizeOrderBatches,
+  summarizeOrderProductDates,
   toLocalDateKey,
   withoutOrderBatch,
   withoutOrderCustomer,
@@ -154,6 +162,10 @@ const coupangWb = {
           "노출상품명",
           "구매수",
           "배송메시지",
+          "등록상품명",
+          "등록옵션명",
+          "노출상품ID",
+          "옵션ID",
         ],
         [
           "1",
@@ -164,6 +176,10 @@ const coupangWb = {
           "레몬크림마요소스 1kg 일본산",
           "2",
           "배송 전 연락주세요",
+          "레몬크림마요소스 판매상품 1kg",
+          "1kg 1개",
+          900100,
+          700100,
         ],
         [
           "2",
@@ -174,6 +190,10 @@ const coupangWb = {
           "레몬크림마요소스 1kg 일본산",
           "1",
           "",
+          "레몬크림마요소스 판매상품 1kg",
+          "1kg 1개",
+          900100,
+          700100,
         ],
       ],
     },
@@ -194,6 +214,14 @@ assertEq(
   "쿠팡 상품명 추출"
 );
 assertEq(coupangCustomers[0].zipcode, "06234", "쿠팡 우편번호");
+const coupangResult = coupangParser.parseWithOrderRows(coupangWb);
+assertEq(coupangResult.orderRows[0].platform, "coupang", "쿠팡 표준 row 플랫폼");
+assertEq(coupangResult.orderRows[0].rawProductName, "레몬크림마요소스 판매상품 1kg", "쿠팡 등록상품명 원문 보존");
+assertEq(coupangResult.orderRows[0].rawOptionName, "1kg 1개", "쿠팡 등록옵션명 보존");
+assertEq(coupangResult.orderRows[0].platformProductId, "900100", "쿠팡 노출상품ID 문자열 보존");
+assertEq(coupangResult.orderRows[0].platformOptionId, "700100", "쿠팡 옵션ID 문자열 보존");
+assertEq(coupangResult.orderRows[0].displayProductName, "레몬크림마요소스 1kg", "쿠팡 기존 표시 상품명 유지");
+assertEq(coupangResult.orderRows[0].quantity, 2, "쿠팡 원본 row 수량 보존");
 
 console.log("\n=== 쿠팡 문 앞 배송메시지 필터 ===");
 const doorDropOnlyMessages = [
@@ -274,6 +302,9 @@ const naverWb = {
           "상품명",
           "수량",
           "배송메시지",
+          "옵션정보",
+          "상품번호",
+          "옵션관리코드",
         ],
         [
           "2024001",
@@ -285,6 +316,9 @@ const naverWb = {
           "핑크 나루토마키 어묵 160g 특가",
           "5",
           "",
+          "160g 1개",
+          12504797072,
+          "OPT-160",
         ],
       ],
     },
@@ -302,6 +336,33 @@ assertEq(
   "네이버 상품명 추출"
 );
 assertEq(naverCustomers[0].products[0].quantity, 5, "네이버 수량");
+const naverResult = naverParser.parseWithOrderRows(naverWb);
+assertEq(naverResult.orderRows[0].platform, "naver", "네이버 표준 row 플랫폼");
+assertEq(naverResult.orderRows[0].rawProductName, "핑크 나루토마키 어묵 160g 특가", "네이버 원본 상품명 보존");
+assertEq(naverResult.orderRows[0].displayProductName, "핑크 나루토마키 어묵 160g", "네이버 기존 표시 상품명 유지");
+assertEq(naverResult.orderRows[0].rawOptionName, "160g 1개", "네이버 옵션정보 보존");
+assertEq(naverResult.orderRows[0].platformProductId, "12504797072", "네이버 상품번호 문자열 보존");
+assertEq(naverResult.orderRows[0].platformOptionId, "OPT-160", "네이버 옵션관리코드 보존");
+assertEq(naverResult.orderRows[0].quantity, 5, "네이버 원본 row 수량 보존");
+
+console.log("\n=== 표준 플랫폼 상품 key 및 snapshot ===");
+assertEq(makePlatformProductKey({ platform: "coupang", platformProductId: "900100", platformOptionId: "700100" }), "coupang::900100::700100", "쿠팡 상품·옵션 key");
+assertEq(makePlatformProductKey({ platform: "naver", platformProductId: "12504797072", platformOptionId: "" }), "naver::12504797072", "네이버 상품 key");
+assertEq(makePlatformProductKey({ platform: "naver", platformProductId: "12504797072", platformOptionId: "OPT-160" }), "naver::12504797072::OPT-160", "네이버 상품·옵션 key");
+assertEq(makePlatformProductKey({ platform: "naver", rawProductName: " 상품  A ", rawOptionName: " 1 KG " }), "naver::name::상품 a::1 kg", "ID 없는 상품 원문 fallback key");
+assertEq(makePlatformProductKey({ platform: "coupang", platformProductId: "900100", platformOptionId: "700100", rawProductName: "변경된 SEO 상품명" }), "coupang::900100::700100", "ID가 있으면 원본 상품명 변경에도 key 유지");
+assert(makePlatformProductKey({ platform: "coupang", platformProductId: "100", platformOptionId: "200" }) !== makePlatformProductKey({ platform: "coupang", platformProductId: "100", platformOptionId: "201" }), "같은 상품의 다른 옵션 key 분리");
+assert(makePlatformProductKey({ platform: "naver", platformProductId: "123" }) !== makePlatformProductKey({ platform: "coupang", platformProductId: "123" }), "동일 상품 ID의 플랫폼 key 분리");
+assertEq(makeWholesaleProductId("유린기소스", "1kg"), makeWholesaleProductId("유린기소스", "1kg"), "가격 변경과 무관한 회원2가 deterministic ID");
+const mergedOrderProducts = mergeOrderProducts([
+  ...coupangResult.orderRows,
+  naverResult.orderRows[0],
+  { ...naverResult.orderRows[0], platformProductId: "DIFFERENT", displayProductName: coupangResult.orderRows[0].displayProductName },
+]);
+assertEq(mergedOrderProducts.find((item) => item.platform === "coupang")?.quantity, 3, "동일 플랫폼·상품·옵션 수량 합산");
+assertEq(mergedOrderProducts.filter((item) => item.platform === "naver").length, 2, "같은 표시명이어도 다른 ID는 분리");
+assertEq(mergedOrderProducts.length, 3, "서로 다른 플랫폼 상품은 분리");
+assert(mergedOrderProducts.every((item) => !["customerName", "phone", "address", "zipcode", "deliveryMessage"].some((key) => key in item)), "orderProducts 개인정보 필드 제외");
 
 const naverDoorDropWb = {
   ...naverWb,
@@ -364,6 +425,92 @@ assert(
   !coupangDup[0].address.includes(`${addr} ${addr}`),
   "address 필드에 중복 결합 없음"
 );
+
+console.log("\n=== 회원2가 제품DB 파서 ===");
+const wholesaleHeader = ["브랜드", "분류1", "분류2", "분류3", "상태", "품명", "규격", "과세", "부가세", "기준판매가", "판매단가"];
+const wholesaleRow = (name, spec, price) => ["", "", "", "", "", name, spec, "", "", "", price];
+const wholesaleWorkbook = {
+  sheets: [{ name: "Sheet1", data: [
+    ["품목별판매단가현황"],
+    ["브랜드", "분류1", "분류2", "분류3", "상태", "품명", "규격", "과세", "부가세", "기준판매가", "도매2가"],
+    wholesaleHeader,
+    wholesaleRow("유린기소스 모노쉐프", "1kg", "5,360"),
+    wholesaleRow("유린기소스 모노쉐프", "2kg", "6000"),
+    wholesaleRow("규격 없는 상품", "", "1,200"),
+    wholesaleRow("", "1kg", "2000"),
+    wholesaleRow("빈 가격 상품", "1kg", ""),
+    wholesaleRow("0원 상품", "1kg", "0"),
+    wholesaleRow("음수 상품", "1kg", "-50"),
+    wholesaleRow("유린기소스 모노쉐프", "1kg", "5360"),
+  ] }],
+};
+const parsedWholesale = parseWholesaleWorkbook(wholesaleWorkbook);
+assertEq(parsedWholesale.products.length, 2, "회원2가 유효 제품과 중복 그룹 분리");
+assertEq(parsedWholesale.excludedCount, 4, "빈 품명·가격·0원·음수 행 제외");
+assertEq(parsedWholesale.duplicateCount, 2, "같은 품명과 규격 중복 행 감지");
+assertEq(parsedWholesale.products.find((item) => item.productName === "규격 없는 상품")?.specification, "", "빈 규격 허용");
+assertEq(parsedWholesale.products.find((item) => item.specification === "2kg")?.purchasePrice, 6000, "F/G/K 회원2가 가격 파싱");
+assertEq(parseWholesalePrice("5,360"), 5360, "회원2가 쉼표 가격 파싱");
+assertEq(makeWholesaleProductId("상품 A", "1kg"), makeWholesaleProductId(" 상품  A ", " 1kg "), "품명·규격 정규화 ID 안정성");
+assert(makeWholesaleProductId("상품 A", "1kg") !== makeWholesaleProductId("상품 A", "2kg"), "같은 품명 다른 규격은 다른 ID");
+assertEq(normalizeProductKeyText("  ABC   Product  "), "abc product", "제품 키 공백·대소문자 정규화");
+assertEq(calculateMarketplacePrices(5360).naverPrice, 6170, "회원2가 네이버 가격 10원 올림");
+assertEq(calculateMarketplacePrices(5360).coupangPrice, 6700, "회원2가 쿠팡 가격 10원 올림");
+assertEq(ceilToTenWon(10.01), 20, "판매가 10원 단위 경계 올림");
+assertEq(ceilToTenWon(20), 20, "판매가 정확한 10원 단위 유지");
+assert(validateManualProductInput({ productName: "직접 제품", specification: "", purchasePrice: "5,360" }).valid, "직접등록 규격 빈 값 허용");
+assert(!validateManualProductInput({ productName: "", purchasePrice: 1000 }).valid, "직접등록 제품명 필수");
+assert(!validateManualProductInput({ productName: "제품", purchasePrice: "" }).valid, "직접등록 매입가 필수");
+assert(!validateManualProductInput({ productName: "제품", purchasePrice: 0 }).valid, "직접등록 0원 금지");
+assert(!validateManualProductInput({ productName: "제품", purchasePrice: -1 }).valid, "직접등록 음수 금지");
+assert(!validateManualProductInput({ productName: "제품", purchasePrice: "가격" }).valid, "직접등록 비숫자 금지");
+try {
+  parseWholesaleWorkbook({ sheets: [{ name: "bad", data: [["상품명", "가격"]] }] });
+  assert(false, "회원2가 헤더 오류 발생");
+} catch (error) {
+  assert(String(error.message).includes("회원2가 제품DB 형식"), "회원2가 헤더 오류 메시지");
+}
+
+console.log("\n=== 주문가격표 실제 제품 통합 ===");
+const targetX = { id: "wholesale:x", productName: "통합 제품", specification: "1kg", purchasePrice: 5360, source: "wholesale" };
+const targetY = { id: "manual::y", productName: "다른 제품", specification: "", purchasePrice: 7000, source: "manual" };
+const resolvedRow = (platform, key, target, quantity = 1) => ({
+  status: "matched",
+  platformProductKey: key,
+  orderProduct: { platform, displayProductName: "같은 표시명", rawProductName: `${platform} 원본`, rawOptionName: "옵션", platformProductId: key, platformOptionId: "", quantity },
+  mapping: { platformProductKey: key, platform, platformProductId: key, platformOptionId: "", rawProductName: `${platform} 원본`, rawOptionName: "옵션", wholesaleProductId: target.id },
+  wholesaleProduct: target,
+  targetProduct: target,
+  prices: { purchasePrice: target.purchasePrice, ...calculateMarketplacePrices(target.purchasePrice) },
+});
+const mappingsForX = [
+  resolvedRow("naver", "naver::100", targetX).mapping,
+  resolvedRow("coupang", "coupang::200::300", targetX).mapping,
+  resolvedRow("naver", "naver::101", targetX).mapping,
+];
+const grouped = buildOrderPricingRows([
+  resolvedRow("naver", "naver::100", targetX, 2),
+  resolvedRow("coupang", "coupang::200::300", targetX, 3),
+], mappingsForX);
+assertEq(grouped.items.length, 1, "같은 target product id의 네이버·쿠팡 행 통합");
+assertEq(grouped.items[0].quantity, 5, "통합 행 내부 수량 합산");
+assertEq(grouped.items[0].sourceOrderProducts[0].rawOptionName, "옵션", "통합 후 원본 옵션 보존");
+assertEq(grouped.items[0].platformProductKeys.length, 2, "통합 후 platform product key 보존");
+assertEq(grouped.matchedCount, 1, "통합 표시 행 기준 matched count");
+assertEq(grouped.items[0].salesPlatforms.join(" · "), "naver · coupang", "전체 mapping 기준 네이버·쿠팡 플랫폼 표시");
+assertEq(getSalesPlatformsForProduct(mappingsForX, targetX.id).join(","), "naver,coupang", "같은 플랫폼 mapping 중복 제거");
+const afterCoupangUnlink = mappingsForX.filter((mapping) => mapping.platform !== "coupang");
+assertEq(getSalesPlatformsForProduct(afterCoupangUnlink, targetX.id).join(","), "naver", "쿠팡 mapping 해제 후 네이버만 표시");
+const unmatchedRows = buildOrderPricingRows([
+  { status: "unmatched", platformProductKey: "naver::u", orderProduct: { platform: "naver", displayProductName: "같은 표시명", rawProductName: "같은 표시명", rawOptionName: "", quantity: 1 }, mapping: null, prices: null },
+  { status: "unmatched", platformProductKey: "coupang::u", orderProduct: { platform: "coupang", displayProductName: "같은 표시명", rawProductName: "같은 표시명", rawOptionName: "", quantity: 1 }, mapping: null, prices: null },
+], []);
+assertEq(unmatchedRows.items.length, 2, "같은 상품명의 미매칭 플랫폼 상품은 통합하지 않음");
+const differentTargets = buildOrderPricingRows([
+  resolvedRow("naver", "naver::x", targetX),
+  resolvedRow("coupang", "coupang::y", targetY),
+], [resolvedRow("naver", "naver::x", targetX).mapping, resolvedRow("coupang", "coupang::y", targetY).mapping]);
+assertEq(differentTargets.items.length, 2, "같은 표시명이어도 target product id가 다르면 분리");
 
 console.log("\n=== 제품가격관리 파서 ===");
 const priceWb = {
@@ -453,6 +600,65 @@ const batchA = createOrderBatch(
 assertEq(batchA.id, "batch-a", "첫 batch 저장 ID");
 assertEq(batchA.dateKey, "2026-09-28", "첫 batch local date key");
 assertEq(batchA.customerCount, 1, "첫 batch 고객 수");
+assertEq(batchA.orderProducts.length, 0, "상품 snapshot 없는 기존 저장 호출 호환");
+
+const batchWithProducts = createOrderBatch(
+  [savedCustomerA],
+  new Date(2026, 8, 28, 10, 20),
+  () => "batch-products",
+  [...coupangResult.orderRows, naverResult.orderRows[0]]
+);
+assertEq(batchWithProducts.orderProducts.length, 2, "OrderBatch에 플랫폼 상품 snapshot 저장");
+assertEq(batchWithProducts.orderProducts[0].quantity, 3, "OrderBatch 동일 상품 수량 합산 저장");
+assert(batchWithProducts.orderProducts.every((item) => !("phone" in item) && !("address" in item)), "OrderBatch 상품 snapshot 개인정보 없음");
+const restoredProductBatch = normalizeOrderBatches(JSON.parse(JSON.stringify([batchWithProducts])))[0];
+assertEq(restoredProductBatch.orderProducts.length, 2, "OrderBatch 직렬화 후 상품 snapshot 복원");
+const restoredLegacyBatch = normalizeOrderBatches([{ id: "legacy", dateKey: "2026-09-28", createdAt: "2026-09-28T00:00:00.000Z", customers: [] }])[0];
+assertEq(restoredLegacyBatch.orderProducts.length, 0, "과거 orderProducts 없는 batch 복원");
+
+const pricingProduct = {
+  platform: "coupang",
+  displayProductName: "같은 표시 상품",
+  rawProductName: "원본 상품",
+  rawOptionName: "옵션 A",
+  platformProductId: "product-1",
+  platformOptionId: "option-1",
+  quantity: 2,
+};
+const pricingBatchMorning = createOrderBatch(
+  [savedCustomerA],
+  new Date(2026, 8, 29, 9, 0),
+  () => "pricing-morning",
+  [pricingProduct]
+);
+const pricingBatchAfternoon = createOrderBatch(
+  [savedCustomerB],
+  new Date(2026, 8, 29, 15, 0),
+  () => "pricing-afternoon",
+  [
+    { ...pricingProduct, quantity: 3 },
+    { ...pricingProduct, platformProductId: "product-2", quantity: 1 },
+    { ...pricingProduct, platform: "naver", platformProductId: "product-1", quantity: 4 },
+  ]
+);
+const pricingBatchPrevious = createOrderBatch(
+  [savedCustomerA],
+  new Date(2026, 8, 28, 11, 0),
+  () => "pricing-previous",
+  [{ ...pricingProduct, quantity: 7 }]
+);
+const pricingBatches = [batchA, pricingBatchMorning, pricingBatchAfternoon, pricingBatchPrevious];
+const productDates = summarizeOrderProductDates(pricingBatches);
+assertEq(productDates.length, 2, "orderProducts가 있는 날짜만 조회");
+assertEq(productDates[0].dateKey, "2026-09-29", "주문상품 날짜는 가장 최근 날짜 우선");
+assertEq(productDates[0].batchCount, 2, "같은 날짜의 상품 포함 batch 수 집계");
+assertEq(productDates[0].productCount, 3, "같은 날짜 고유 플랫폼 상품 수 집계");
+const pricingDayProducts = getOrderProductsForDate(pricingBatches, "2026-09-29");
+assertEq(pricingDayProducts.length, 3, "같은 날짜 여러 batch 상품 합산 및 다른 key 분리");
+assertEq(pricingDayProducts.find((item) => item.platform === "coupang" && item.platformProductId === "product-1")?.quantity, 5, "동일 platform key 수량 합산");
+assertEq(pricingDayProducts.filter((item) => item.displayProductName === "같은 표시 상품").length, 3, "같은 표시명이라도 productId 또는 platform이 다르면 분리");
+assertEq(getOrderProductsForDate(pricingBatches, "2026-09-28")[0]?.quantity, 7, "다른 날짜 주문상품 분리");
+assertEq(summarizeOrderProductDates([batchA]).length, 0, "orderProducts 없는 과거 batch 날짜 무시");
 
 const batchB = createOrderBatch(
   [savedCustomerA, savedCustomerB],

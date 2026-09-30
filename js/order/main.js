@@ -91,6 +91,7 @@ export function mountOrderExtractor(root) {
    *   mallId: string,
    *   mallLabel: string,
    *   customers: import('./model/Customer.js').Customer[],
+   *   orderRows: object[],
    *   outputMode: string,
    *   lastRenderedText: string,
    *   resultSource: 'none'|'extracted'|'saved',
@@ -105,6 +106,7 @@ export function mountOrderExtractor(root) {
     mallId: "",
     mallLabel: "",
     customers: [],
+    orderRows: [],
     outputMode: OUTPUT_MODE.BASIC,
     lastRenderedText: "",
     resultSource: "none",
@@ -199,6 +201,7 @@ export function mountOrderExtractor(root) {
   function fullReset() {
     resetFile();
     state.customers = [];
+    state.orderRows = [];
     state.outputMode = OUTPUT_MODE.BASIC;
     state.lastRenderedText = "";
     state.resultSource = "none";
@@ -219,6 +222,7 @@ export function mountOrderExtractor(root) {
   async function handleFile(file) {
     renderer.hideAlert();
     state.customers = [];
+    state.orderRows = [];
     state.resultSource = "none";
     state.savedCustomerEntries = [];
     renderer.setResultActionsEnabled(false);
@@ -259,10 +263,11 @@ export function mountOrderExtractor(root) {
       renderer.setConvertEnabled(false);
       renderer.showAlert("변환 중…", "info");
       await new Promise((r) => setTimeout(r, 0));
-      const { parser, customers } = ParserFactory.parse(state.workbook);
+      const { parser, customers, orderRows } = ParserFactory.parse(state.workbook);
       state.mallId = parser.mallId;
       state.mallLabel = parser.mallLabel;
       state.customers = customers;
+      state.orderRows = orderRows;
       state.resultSource = customers.length ? "extracted" : "none";
       state.savedCustomerEntries = [];
       renderer.updateMallBadge(parser.mallLabel, parser.mallId);
@@ -406,7 +411,7 @@ export function mountOrderExtractor(root) {
     state.saving = true;
     updateSaveButton();
     try {
-      const batch = await saveOrderBatch(state.customers);
+      const batch = await saveOrderBatch(state.customers, new Date(), state.orderRows);
       await reloadHistory();
       renderer.showAlert(
         `✓ ${formatOrderDate(batch.dateKey)} 주문내역에 고객 ${batch.customerCount}명을 저장했습니다.`,
@@ -591,6 +596,7 @@ export function mountOrderExtractor(root) {
     on(els.clearFileBtn, "click", () => {
       resetFile();
       state.customers = [];
+      state.orderRows = [];
       state.resultSource = "none";
       renderer.setResultActionsEnabled(false);
       updateSaveButton();

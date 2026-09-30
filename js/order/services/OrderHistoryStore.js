@@ -3,7 +3,9 @@
  */
 import {
   createOrderBatch,
+  getOrderProductsForDate,
   normalizeOrderBatches,
+  summarizeOrderProductDates,
 } from "../model/OrderBatch.js";
 
 const DB_NAME = "dauto-order-history";
@@ -54,12 +56,23 @@ export async function loadOrderBatches() {
   return normalizeOrderBatches(Array.isArray(records) ? records : []);
 }
 
+/** 주문상품이 있는 저장 날짜를 최신순으로 반환한다. */
+export async function getOrderDatesWithProducts() {
+  return summarizeOrderProductDates(await loadOrderBatches());
+}
+
+/** @param {string} dateKey */
+export async function getOrderProductsByDate(dateKey) {
+  return getOrderProductsForDate(await loadOrderBatches(), dateKey);
+}
+
 /**
  * @param {import('../model/Customer.js').Customer[]} customers
  * @param {Date} [now]
+ * @param {object[]} [orderRows]
  */
-export async function saveOrderBatch(customers, now = new Date()) {
-  const batch = createOrderBatch(customers, now);
+export async function saveOrderBatch(customers, now = new Date(), orderRows = []) {
+  const batch = createOrderBatch(customers, now, undefined, orderRows);
   await withStore("readwrite", (store) => store.add(batch));
   return batch;
 }

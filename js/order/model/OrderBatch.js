@@ -3,6 +3,7 @@
  */
 import { Customer } from "./Customer.js";
 import { Product } from "./Product.js";
+import { mergeOrderProducts } from "./StandardOrderRow.js";
 
 /**
  * 브라우저 사용자의 로컬 날짜를 YYYY-MM-DD로 만든다.
@@ -80,7 +81,8 @@ export function createOrderBatch(
   now = new Date(),
   idFactory = () =>
     globalThis.crypto?.randomUUID?.() ||
-    `batch-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `batch-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  orderRows = []
 ) {
   const list = Array.isArray(customers) ? customers : [];
   if (!list.length) {
@@ -93,6 +95,7 @@ export function createOrderBatch(
     createdAt: now.toISOString(),
     customers: snapshots,
     customerCount: snapshots.length,
+    orderProducts: mergeOrderProducts(orderRows),
   };
 }
 
@@ -115,7 +118,8 @@ export function normalizeOrderBatch(value) {
   const customers = Array.isArray(batch.customers)
     ? batch.customers.map(snapshotCustomer)
     : [];
-  return { id, dateKey, createdAt, customers, customerCount: customers.length };
+  const orderProducts = mergeOrderProducts(Array.isArray(batch.orderProducts) ? batch.orderProducts : []);
+  return { id, dateKey, createdAt, customers, customerCount: customers.length, orderProducts };
 }
 
 /**
@@ -158,6 +162,45 @@ export function getBatchesForDate(batches, dateKey) {
   return normalizeOrderBatches(batches)
     .filter((batch) => batch.dateKey === dateKey)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/**
+ * 주문상품 snapshot이 있는 날짜만 최신순으로 집계한다.
+ * @param {unknown[]} batches
+ * @returns {{dateKey:string,batchCount:number,productCount:number}[]}
+ */
+export function summarizeOrderProductDates(batches) {
+  const dates = new Map();
+  for (const batch of normalizeOrderBatches(batches)) {
+    if (!batch.orderProducts.length) continue;
+    const current = dates.get(batch.dateKey) || {
+      dateKey: batch.dateKey,
+      batchCount: 0,
+      orderProducts: [],
+    };
+    current.batchCount += 1;
+    current.orderProducts.push(...batch.orderProducts);
+    dates.set(batch.dateKey, current);
+  }
+  return Array.from(dates.values())
+    .map(({ dateKey, batchCount, orderProducts }) => ({
+      dateKey,
+      batchCount,
+      productCount: mergeOrderProducts(orderProducts).length,
+    }))
+    .sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
+/**
+ * 같은 날짜의 모든 batch 상품을 플랫폼 상품 key 기준으로 합산한다.
+ * @param {unknown[]} batches
+ * @param {string} dateKey
+ * @returns {object[]}
+ */
+export function getOrderProductsForDate(batches, dateKey) {
+  return mergeOrderProducts(
+    getBatchesForDate(batches, dateKey).flatMap((batch) => batch.orderProducts)
+  );
 }
 
 /**

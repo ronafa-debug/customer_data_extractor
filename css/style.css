@@ -506,6 +506,283 @@ body {
   }
 }
 
+.product-db-status p,
+.product-db-import-summary p {
+  margin: 0.35rem 0;
+}
+
+.product-db-import-summary {
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.55rem;
+  background: var(--surface-2);
+}
+
+.product-db-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.order-price-heading,
+.product-mapping-header,
+.product-mapping-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.order-price-description,
+.product-mapping-platform {
+  margin: 0.3rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.order-price-date-label {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 220px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.order-pricing-notice {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.6rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+.order-pricing-notice.is-warning {
+  color: #7a4d00;
+  background: #fff3cd;
+}
+
+[data-theme="dark"] .order-pricing-notice.is-warning {
+  color: #ffd978;
+  background: rgba(255, 193, 7, 0.13);
+}
+
+.order-price-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 1rem 0 0.75rem;
+}
+
+.order-price-filters .btn {
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.order-price-filters .btn.is-active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.order-price-table-wrap {
+  max-height: 52vh;
+}
+
+.order-price-table td:nth-child(2) strong,
+.order-price-table td:nth-child(2) small {
+  display: block;
+}
+
+.order-price-table td:nth-child(2) small {
+  max-width: 340px;
+  margin-top: 0.16rem;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-price-table td:nth-child(2) small.order-connected-product {
+  color: var(--primary);
+}
+
+.order-platform-badge,
+.order-match-badge {
+  display: inline-flex;
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.order-price-table td:nth-child(2) .order-platform-badge + .order-platform-badge {
+  margin-left: 0.3rem;
+}
+
+.product-source-badge {
+  display: inline-flex;
+  align-self: start;
+  padding: 0.16rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.product-source-badge.is-wholesale { color: #215b9c; background: rgba(45, 116, 196, 0.13); }
+.product-source-badge.is-manual { color: #7b3fa0; background: rgba(132, 74, 168, 0.13); }
+.product-source-filters { margin-top: 0.8rem; }
+.product-db-actions, .mapping-source-actions { display: flex; gap: 0.35rem; }
+
+.order-platform-badge.is-naver { color: #087a37; background: rgba(3, 199, 90, 0.13); }
+.order-platform-badge.is-coupang { color: #a43a2d; background: rgba(205, 64, 46, 0.13); }
+.order-match-badge.is-matched { color: #176b3a; background: #dff7e8; }
+.order-match-badge.is-unmatched { color: #8a5700; background: #fff0c2; }
+.order-match-badge.is-stale { color: #a12632; background: #fde2e5; }
+
+.product-mapping-dialog {
+  width: min(720px, calc(100vw - 2rem));
+  max-height: min(760px, calc(100vh - 2rem));
+  padding: 1.25rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.product-mapping-dialog::backdrop { background: rgba(0, 0, 0, 0.52); }
+.product-mapping-dialog h2 { margin: 0; font-size: 1.15rem; }
+
+.product-mapping-order,
+.product-mapping-current {
+  display: grid;
+  gap: 0.25rem;
+  margin: 1rem 0;
+  padding: 0.85rem;
+  border-radius: 0.6rem;
+  background: var(--surface-2);
+}
+
+.product-mapping-order small,
+.product-mapping-current span,
+.product-mapping-candidate span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.product-mapping-search-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.product-mapping-candidates {
+  display: grid;
+  gap: 0.5rem;
+  min-height: 4rem;
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+}
+
+.product-mapping-entries {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.mapping-source-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface-2);
+}
+
+.mapping-source-card > span:not(.order-platform-badge) {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.mapping-source-actions { grid-column: 3; grid-row: 1 / span 2; }
+.product-mapping-search-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+
+.manual-product-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.manual-product-form {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.manual-product-form label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.manual-price-preview {
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.55rem;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.product-mapping-candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  color: var(--text);
+}
+
+.product-mapping-candidate > div { display: grid; gap: 0.18rem; }
+.product-mapping-footer { align-items: center; margin-top: 1rem; }
+.product-mapping-footer #unlinkMappingBtn { margin-right: auto; }
+.product-mapping-more { margin: 0; font-size: 0.8rem; }
+
+@media (max-width: 800px) {
+.order-price-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .order-price-date-label { min-width: 0; }
+
+  .mapping-source-card { grid-template-columns: auto 1fr; }
+  .mapping-source-actions { grid-column: 1 / -1; grid-row: auto; }
+}
+
 .result-output {
   margin: 0;
   min-height: 280px;

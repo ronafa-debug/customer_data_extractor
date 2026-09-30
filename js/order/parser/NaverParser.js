@@ -4,6 +4,7 @@
  */
 import { BaseParser } from "./BaseParser.js";
 import { groupCustomers } from "../utils/GroupCustomer.js";
+import { createStandardOrderRow, toCustomerGroupingRow } from "../model/StandardOrderRow.js";
 
 export class NaverParser extends BaseParser {
   /** @returns {string} */
@@ -57,6 +58,11 @@ export class NaverParser extends BaseParser {
    * @returns {import('../model/Customer.js').Customer[]}
    */
   parse(workbook) {
+    return this.parseWithOrderRows(workbook).customers;
+  }
+
+  /** @param {object} workbook */
+  parseWithOrderRows(workbook) {
     const data = this.getSheetData(workbook);
     const headerInfo = this.#findHeaderRow(data);
     if (!headerInfo) {
@@ -71,7 +77,7 @@ export class NaverParser extends BaseParser {
     // 명세서: 3행부터 데이터 (0-based index 2)
     const dataStart = Math.max(2, headerInfo.index + 1);
     /** @type {Array<object>} */
-    const rawRows = [];
+    const orderRows = [];
 
     for (let i = dataStart; i < data.length; i++) {
       const row = data[i] || [];
@@ -87,22 +93,33 @@ export class NaverParser extends BaseParser {
       const address = this.joinAddressParts(baseAddr, detailAddr);
       const deliveryMessage = cols.message >= 0 ? this.cell(row[cols.message]) : "";
       const productName = this.cell(row[cols.product]);
+      const rawOptionName = cols.option >= 0 ? this.cell(row[cols.option]) : "";
+      const platformProductId = cols.productId >= 0 ? this.cell(row[cols.productId]) : "";
+      const platformOptionId = cols.optionId >= 0 ? this.cell(row[cols.optionId]) : "";
       const quantity = cols.qty >= 0 ? this.parseQuantity(row[cols.qty]) : 1;
 
       if (!name && !productName) continue;
 
-      rawRows.push({
-        name,
+      orderRows.push(createStandardOrderRow({
+        platform: "naver",
+        displayProductName: productName,
+        rawProductName: productName,
+        rawOptionName,
+        platformProductId,
+        platformOptionId,
+        customerName: name,
         phone,
         address,
         zipcode,
         deliveryMessage,
-        productName,
         quantity,
-      });
+      }));
     }
 
-    return groupCustomers(rawRows);
+    return {
+      orderRows,
+      customers: groupCustomers(orderRows.map(toCustomerGroupingRow)),
+    };
   }
 
   /**
@@ -170,6 +187,9 @@ export class NaverParser extends BaseParser {
       address,
       addressDetail,
       product: this.findColumnIndex(headerRow, ["상품명", "상품이름"]),
+      option: this.findColumnIndex(headerRow, ["옵션정보"]),
+      productId: this.findColumnIndex(headerRow, ["상품번호"]),
+      optionId: this.findColumnIndex(headerRow, ["옵션관리코드"]),
       qty: this.findColumnIndex(headerRow, ["수량", "주문수량", "구매수량"]),
       message: this.findColumnIndex(headerRow, [
         "배송메시지",

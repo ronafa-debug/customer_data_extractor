@@ -37,8 +37,12 @@ export function detect(workbook) {
  */
 export function parseWorkbook(workbook) {
   const parser = detect(workbook);
+  if (typeof parser.parseWithOrderRows === "function") {
+    const { customers, orderRows } = parser.parseWithOrderRows(workbook);
+    return { parser, customers, orderRows };
+  }
   const customers = parser.parse(workbook);
-  return { parser, customers };
+  return { parser, customers, orderRows: [] };
 }
 
 export const ParserFactory = {

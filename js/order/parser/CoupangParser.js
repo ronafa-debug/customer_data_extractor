@@ -4,6 +4,7 @@
 import { BaseParser } from "./BaseParser.js";
 import { groupCustomers } from "../utils/GroupCustomer.js";
 import { isDoorDropOnlyMessage } from "../utils/DoorDropMessage.js";
+import { createStandardOrderRow, toCustomerGroupingRow } from "../model/StandardOrderRow.js";
 
 export class CoupangParser extends BaseParser {
   /** @returns {string} */
@@ -58,6 +59,11 @@ export class CoupangParser extends BaseParser {
    * @returns {import('../model/Customer.js').Customer[]}
    */
   parse(workbook) {
+    return this.parseWithOrderRows(workbook).customers;
+  }
+
+  /** @param {object} workbook */
+  parseWithOrderRows(workbook) {
     const data = this.getSheetData(workbook);
     const headerInfo = this.#findHeaderRow(data);
     if (!headerInfo) {
@@ -70,7 +76,7 @@ export class CoupangParser extends BaseParser {
     }
 
     /** @type {Array<object>} */
-    const rawRows = [];
+    const orderRows = [];
 
     for (let i = headerInfo.index + 1; i < data.length; i++) {
       const row = data[i] || [];
@@ -87,23 +93,35 @@ export class CoupangParser extends BaseParser {
       const deliveryMessage = isDoorDropOnlyMessage(rawDeliveryMessage)
         ? ""
         : rawDeliveryMessage;
-      const productName = this.cell(row[cols.product]);
+      const displayProductName = this.cell(row[cols.product]);
+      const registeredProductName = cols.rawProduct >= 0 ? this.cell(row[cols.rawProduct]) : "";
+      const rawOptionName = cols.rawOption >= 0 ? this.cell(row[cols.rawOption]) : "";
+      const platformProductId = cols.productId >= 0 ? this.cell(row[cols.productId]) : "";
+      const platformOptionId = cols.optionId >= 0 ? this.cell(row[cols.optionId]) : "";
       const quantity = cols.qty >= 0 ? this.parseQuantity(row[cols.qty]) : 1;
 
-      if (!name && !productName) continue;
+      if (!name && !displayProductName) continue;
 
-      rawRows.push({
-        name,
+      orderRows.push(createStandardOrderRow({
+        platform: "coupang",
+        displayProductName,
+        rawProductName: registeredProductName || displayProductName,
+        rawOptionName,
+        platformProductId,
+        platformOptionId,
+        customerName: name,
         phone,
         address,
         zipcode,
         deliveryMessage,
-        productName,
         quantity,
-      });
+      }));
     }
 
-    return groupCustomers(rawRows);
+    return {
+      orderRows,
+      customers: groupCustomers(orderRows.map(toCustomerGroupingRow)),
+    };
   }
 
   /**
@@ -173,6 +191,10 @@ export class CoupangParser extends BaseParser {
         "상품명",
         "옵션명",
       ]),
+      rawProduct: this.findColumnIndex(headerRow, ["등록상품명"]),
+      rawOption: this.findColumnIndex(headerRow, ["등록옵션명"]),
+      productId: this.findColumnIndex(headerRow, ["노출상품ID"]),
+      optionId: this.findColumnIndex(headerRow, ["옵션ID"]),
       qty: this.findColumnIndex(headerRow, [
         "구매수",
         "구매수량",
