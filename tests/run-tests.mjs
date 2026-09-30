@@ -13,6 +13,23 @@ import { ERROR_MESSAGE } from "../js/order/constants.js";
 import { Customer } from "../js/order/model/Customer.js";
 import { makePlatformProductKey, mergeOrderProducts } from "../js/order/model/StandardOrderRow.js";
 import { isDoorDropOnlyMessage } from "../js/order/utils/DoorDropMessage.js";
+import {
+  isReceiptCandidateGeometry,
+  expandReceiptCorners,
+  removeDuplicateReceiptCandidates,
+  sortReceiptCandidates,
+} from "../js/receipt/ReceiptDetector.js";
+import { isShippingFeeProductName, normalizeOcrPrice, parseReceiptItems } from "../js/receipt/ReceiptItemParser.js";
+import { parseTsvLayout } from "../js/receipt/ReceiptOcrLayout.js";
+import {
+  calculateSalePrices,
+  ceilToTen,
+  findDuplicateProduct,
+  normalizeNewProductName,
+  searchNewProducts,
+  validateNewProduct,
+} from "../js/new-price/NewPriceModel.js";
+import { NEW_PRICE_DB_NAME, NEW_PRICE_STORE_NAME } from "../js/new-price/NewPriceStore.js";
 import { calculateMarketplacePrices, ceilToTenWon } from "../js/price/priceCalculator.js";
 import { parseWholesaleWorkbook, parseWholesalePrice } from "../js/price/parseWholesaleWorkbook.js";
 import { makeWholesaleProductId, normalizeProductKeyText } from "../js/price/productNormalizer.js";
@@ -41,6 +58,13 @@ import {
 let passed = 0;
 let failed = 0;
 
+console.log("\n=== 영수증 후보 탐지 유틸 ===");
+const receiptCandidates = [
+  { id: "bottom-right", area: 1200, centerX: 700, centerY: 700, box: { x: 650, y: 620, width: 100, height: 180 } },
+  { id: "top-right", area: 1200, centerX: 700, centerY: 200, box: { x: 650, y: 120, width: 100, height: 180 } },
+  { id: "top-left", area: 1200, centerX: 200, centerY: 180, box: { x: 150, y: 100, width: 100, height: 180 } },
+];
+
 function assert(cond, name) {
   if (cond) {
     passed += 1;
@@ -59,6 +83,119 @@ function assertEq(actual, expected, name) {
   }
   assert(ok, name);
 }
+
+assertEq(
+  sortReceiptCandidates(receiptCandidates).map((item) => item.id).join(","),
+  "top-left,top-right,bottom-right",
+  "사진 위치 기준 행·열 순서 정렬"
+);
+const duplicateCandidates = [
+  { id: "large", area: 1000, box: { x: 10, y: 10, width: 100, height: 200 } },
+  { id: "duplicate", area: 800, box: { x: 12, y: 12, width: 96, height: 196 } },
+  { id: "other", area: 700, box: { x: 200, y: 10, width: 100, height: 200 } },
+];
+assertEq(removeDuplicateReceiptCandidates(duplicateCandidates).length, 2, "겹치는 영수증 후보 중복 제거");
+const validGeometry = {
+  area: 6000,
+  imageArea: 100000,
+  fillRatio: 0.75,
+  quadArea: 7000,
+  aspect: 2.5,
+  boxWidth: 100,
+  boxHeight: 180,
+  imageWidth: 400,
+  imageHeight: 250,
+};
+assert(isReceiptCandidateGeometry(validGeometry), "영수증 크기·사각형 후보 허용");
+assert(
+  !isReceiptCandidateGeometry({ ...validGeometry, area: 100, quadArea: 100 }),
+  "너무 작은 contour 제외"
+);
+const expandedCorners = expandReceiptCorners(
+  [{ x: 0, y: 10 }, { x: 90, y: 10 }, { x: 90, y: 190 }, { x: 0, y: 190 }],
+  100,
+  200
+);
+assertEq(expandedCorners[0].x, 0, "OCR crop 여백이 원본 왼쪽 경계를 넘지 않음");
+assert(expandedCorners[2].x > 90 && expandedCorners[2].x <= 99, "OCR crop 상대 여백 확장");
+assert(
+  !isReceiptCandidateGeometry({ ...validGeometry, fillRatio: 0.2 }),
+  "사각형 밀도가 낮은 후보 제외"
+);
+
+console.log("\n=== 영수증 OCR 행 분석 ===");
+const ocrWord = (text, x0, x1, y0, y1) => ({ text, confidence: 90, bbox: { x0, x1, y0, y1 } });
+const ocrLine = (words) => ({
+  words,
+  text: words.map((word) => word.text).join(" "),
+  bbox: {
+    x0: Math.min(...words.map((word) => word.bbox.x0)),
+    y0: Math.min(...words.map((word) => word.bbox.y0)),
+    x1: Math.max(...words.map((word) => word.bbox.x1)),
+    y1: Math.max(...words.map((word) => word.bbox.y1)),
+  },
+});
+const receiptOcrLines = [
+  ocrLine([ocrWord("모노마트", 30, 170, 10, 35)]),
+  ocrLine([
+    ocrWord("제품명", 30, 100, 100, 130),
+    ocrWord("단가", 320, 370, 100, 130),
+    ocrWord("수량", 430, 480, 100, 130),
+    ocrWord("금액", 550, 610, 100, 130),
+  ]),
+  ocrLine([
+    ocrWord("숨굴튀김", 30, 130, 150, 180),
+    ocrWord("모노쉐프", 140, 240, 150, 180),
+    ocrWord("5,360", 320, 380, 150, 180),
+    ocrWord("20", 440, 465, 150, 180),
+    ocrWord("107,200", 535, 620, 150, 180),
+  ]),
+  ocrLine([
+    ocrWord("떡볶이2(신규)", 30, 230, 195, 225),
+    ocrWord("4 000", 320, 380, 195, 225),
+    ocrWord("1", 445, 460, 195, 225),
+    ocrWord("4,000", 550, 615, 195, 225),
+  ]),
+  ocrLine([
+    ocrWord("택배비2(신규)(1)", 30, 230, 230, 245),
+    ocrWord("4,000", 320, 380, 230, 245),
+    ocrWord("1", 445, 460, 230, 245),
+    ocrWord("4,000", 550, 615, 230, 245),
+  ]),
+  ocrLine([ocrWord("원결제금액", 200, 350, 250, 280), ocrWord("111,200", 535, 620, 250, 280)]),
+  ocrLine([ocrWord("공급가액", 200, 300, 300, 330), ocrWord("101,091", 535, 620, 300, 330)]),
+];
+const parsedReceipt = parseReceiptItems({ lines: receiptOcrLines });
+assertEq(normalizeOcrPrice("5,360"), 5360, "가격 쉼표 제거");
+assertEq(normalizeOcrPrice("5 360"), 5360, "가격 공백 제거");
+assertEq(normalizeOcrPrice("5O60"), null, "잘못된 가격을 임의 보정하지 않음");
+for (const name of ["택배비", "택배비2", "택배비(신규)", "택배비2(신규)(1)", "배송비", "a — 택배비2( 신규) (1 )"]) {
+  assert(isShippingFeeProductName(name), `배송 비용 제외: ${name}`);
+}
+assert(!isShippingFeeProductName("택배용 보냉박스"), "택배 관련 정상 상품 보존");
+assertEq(parsedReceipt.items.length, 2, "한 영수증의 여러 상품 행 파싱");
+assert(!parsedReceipt.items.some((item) => item.productName.includes("택배비")), "파싱된 상품 후보에서 택배비 제외");
+assertEq(parsedReceipt.items[0].productName, "숨굴튀김 모노쉐프", "제품명 열 결합");
+assertEq(parsedReceipt.items[0].purchasePrice, 5360, "단가 열을 매입가로 선택");
+assertEq(parsedReceipt.items[0].quantity, 20, "수량 열 구분");
+assertEq(parsedReceipt.items[0].totalPrice, 107200, "금액 열 구분");
+assert(!parsedReceipt.items.some((item) => item.productName.includes("공급가액")), "상품 테이블 밖 결제 텍스트 제외");
+assertEq(parseReceiptItems({ lines: [] }).items.length, 0, "빈 OCR 결과 처리");
+assertEq(parseReceiptItems({ lines: [ocrLine([ocrWord("판독불가", 0, 100, 0, 20)])] }).reason, "header-not-found", "잘못된 OCR 결과 처리");
+const sampleTsv = [
+  "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext",
+  "5\t1\t1\t1\t1\t1\t10\t20\t50\t20\t95\t제품명",
+  "5\t1\t1\t1\t1\t2\t100\t20\t40\t20\t90\t단가",
+].join("\n");
+assertEq(parseTsvLayout(sampleTsv).lines[0].words.length, 2, "OCR TSV word/line 좌표 정규화");
+const lowConfidenceLines = structuredClone(receiptOcrLines);
+lowConfidenceLines[2].words.find((word) => word.text === "5,360").confidence = 30;
+assert(parseReceiptItems({ lines: lowConfidenceLines }).items[0].reviewRequired, "낮은 단가 confidence는 확인 필요 처리");
+const sequentialReceiptResults = [receiptOcrLines, receiptOcrLines].map((lines, index) => ({
+  receiptIndex: index + 1,
+  ...parseReceiptItems({ lines }),
+}));
+assertEq(sequentialReceiptResults.map((result) => result.receiptIndex).join(","), "1,2", "여러 영수증 순차 분석 순서 유지");
 
 console.log("\n=== ProductExtractor ===");
 assertEq(
@@ -425,6 +562,28 @@ assert(
   !coupangDup[0].address.includes(`${addr} ${addr}`),
   "address 필드에 중복 결합 없음"
 );
+
+console.log("\n=== 신규 제품가격 계산 및 검증 ===");
+assertEq(ceilToTen(6164), 6170, "10원 단위 올림");
+assertEq(ceilToTen(6700), 6700, "이미 10원 단위인 금액 유지");
+assertEq(calculateSalePrices(5360).naverPrice, 6170, "네이버 판매가 15% 및 10원 올림");
+assertEq(calculateSalePrices(5360).coupangPrice, 6700, "쿠팡 판매가 25% 및 10원 올림");
+assertEq(normalizeNewProductName("  토마토아란치니(10)  "), "토마토아란치니", "끝 수량 괄호 제거");
+assertEq(normalizeNewProductName("소스(매운맛)"), "소스(매운맛)", "의미 있는 괄호 보존");
+assertEq(normalizeNewProductName("상품(10) 묶음"), "상품(10) 묶음", "제품명 중간 숫자 괄호 보존");
+assert(validateNewProduct({ productName: "상품", purchasePrice: "1,000" }).valid, "정상 신규 제품 검증");
+assert(!validateNewProduct({ productName: "", purchasePrice: 1000 }).valid, "빈 제품명 거부");
+assert(!validateNewProduct({ productName: "상품", purchasePrice: 0 }).valid, "0원 매입가 거부");
+const newPriceRows = [
+  { id: "a", productName: "토마토 아란치니", purchasePrice: 1000 },
+  { id: "b", productName: "레몬 크림 마요 소스", purchasePrice: 2000 },
+];
+assertEq(searchNewProducts(newPriceRows, "레몬").length, 1, "저장 제품명 부분 검색");
+assertEq(searchNewProducts(newPriceRows, "").length, 2, "빈 검색어는 전체 표시");
+assertEq(findDuplicateProduct(newPriceRows, " 토마토  아란치니 ")?.id, "a", "공백 차이를 무시한 중복 제품 탐지");
+assertEq(findDuplicateProduct(newPriceRows, "새 제품"), null, "중복되지 않은 제품 허용");
+assertEq(NEW_PRICE_DB_NAME === "dauto-price", false, "기존 가격표와 별도 IndexedDB 사용");
+assertEq(NEW_PRICE_STORE_NAME, "products", "신규 가격 전용 object store 사용");
 
 console.log("\n=== 회원2가 제품DB 파서 ===");
 const wholesaleHeader = ["브랜드", "분류1", "분류2", "분류3", "상태", "품명", "규격", "과세", "부가세", "기준판매가", "판매단가"];

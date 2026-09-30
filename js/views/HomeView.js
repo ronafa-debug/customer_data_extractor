@@ -1,13 +1,15 @@
 /**
  * 홈(랜딩) 뷰
  */
-import { TOOLS } from "../tools/registry.js";
+import { getToolsByStatus } from "../tools/registry.js";
 import { go } from "../router/Router.js";
 
 /**
  * @param {HTMLElement} root
  */
 export function renderHomeView(root) {
+  const stableTools = getToolsByStatus("stable");
+
   root.innerHTML = `
     <section class="home-hero">
       <p class="home-eyebrow">E-commerce Automation Toolkit</p>
@@ -15,7 +17,7 @@ export function renderHomeView(root) {
       <p class="home-lead">필요한 업무 도구를 선택하세요. 모든 처리는 도구별로 분리되어 동작합니다.</p>
     </section>
     <section class="tool-grid" aria-label="업무 도구 목록">
-      ${TOOLS.map(
+      ${stableTools.map(
         (tool) => `
         <button type="button" class="tool-card" data-path="${tool.path}">
           <span class="tool-card-icon" aria-hidden="true">${tool.icon}</span>
@@ -25,6 +27,9 @@ export function renderHomeView(root) {
       `
       ).join("")}
     </section>
+    <div class="home-secondary-actions">
+      <button type="button" class="lab-entry-button" id="labEntryBtn">🧪 실험실</button>
+    </div>
   `;
 
   root.querySelectorAll(".tool-card").forEach((btn) => {
@@ -33,4 +38,6 @@ export function renderHomeView(root) {
       if (path) go(path);
     });
   });
+
+  root.querySelector("#labEntryBtn")?.addEventListener("click", () => go("/lab"));
 }

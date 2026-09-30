@@ -18,7 +18,8 @@
   "dependencies": {
     "@sparticuz/chromium": "^133.0.0",
     "playwright-core": "^1.50.1",
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.5",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@hakobu/hakobu": "^1.0.1",
