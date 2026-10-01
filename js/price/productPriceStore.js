@@ -1,3 +1,4 @@
+import { applyBackupTransaction } from './priceBackupTransaction.js'
 export const PRODUCT_PRICE_DB_NAME = "dauto-product-price";
 export const PRODUCT_PRICE_PRODUCTS_STORE = "products";
 export const PRODUCT_PRICE_METADATA_STORE = "metadata";
@@ -175,4 +176,13 @@ export async function replaceProductPriceDatabase(products, metadata) {
       transaction.onabort = () => reject(transaction.error || new Error("제품DB 교체가 취소되었습니다."));
     });
   } finally { db.close(); }
+}
+
+/** Guarded merge writes; rollback is reserved for cross-database compensation. */
+export async function applyPriceDataSnapshot(expected, next, rollback = false) {
+  return applyBackupTransaction(openDb, [
+    { store: PRODUCT_PRICE_PRODUCTS_STORE, key: 'id', expected: expected.wholesaleProducts, next: next.wholesaleProducts },
+    { store: PRODUCT_PRICE_MANUAL_STORE, key: 'id', expected: expected.manualProducts, next: next.manualProducts },
+    { store: PRODUCT_PRICE_METADATA_STORE, key: 'key', expected: expected.wholesaleMetadata ? [expected.wholesaleMetadata] : [], next: next.wholesaleMetadata ? [next.wholesaleMetadata] : [] },
+  ], rollback)
 }

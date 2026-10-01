@@ -1,3 +1,4 @@
+import { applyBackupTransaction } from './priceBackupTransaction.js'
 export const PRODUCT_MAPPING_DB_NAME = "dauto-product-mapping";
 export const PRODUCT_MAPPING_STORE_NAME = "mappings";
 const DB_VERSION = 1;
@@ -102,4 +103,8 @@ export async function deleteProductMapping(platformProductKey) {
       transaction.onabort = () => reject(transaction.error || new Error("상품 매핑 삭제가 취소되었습니다."));
     });
   } finally { db.close(); }
+}
+
+export async function applyMappingSnapshot(expected, next) {
+  return applyBackupTransaction(openDb, [{ store: PRODUCT_MAPPING_STORE_NAME, key: 'platformProductKey', expected, next }])
 }

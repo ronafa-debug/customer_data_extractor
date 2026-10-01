@@ -1,3 +1,4 @@
+import { runBackupTests } from './backup-tests.mjs'
 /**
  * v3 핵심 로직 단위 테스트 (Node ESM)
  * 실행: node tests/run-tests.mjs
@@ -903,6 +904,9 @@ try {
 } catch (e) {
   assertEq(e.message, ERROR_MESSAGE.UNSUPPORTED_MALL, "지원하지 않는 주문서입니다.");
 }
+
+console.log('\n=== 제품가격관리 백업 및 병합 ===');
+runBackupTests(assert);
 
 console.log(`\n=== 결과: ${passed} passed, ${failed} failed ===\n`);
 process.exit(failed ? 1 : 0);

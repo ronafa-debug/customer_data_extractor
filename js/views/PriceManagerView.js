@@ -13,6 +13,8 @@ import {
 } from "../price/productPriceStore.js";
 import { getAllProductMappings } from "../price/productMappingStore.js";
 
+import { renderProductPriceBackupPanel } from '../price/ProductPriceBackupPanel.js'
+
 const PAGE_SIZE = 50;
 const won = new Intl.NumberFormat("ko-KR");
 
@@ -41,6 +43,7 @@ export function renderPriceManagerView(root) {
         <div id="productDbImportSummary" class="product-db-import-summary d-none"></div>
       </section>
       <div id="priceAlert" class="alert-box d-none" role="status" aria-live="polite"></div>
+      <div id="productPriceBackupHost"></div>
       <div id="orderProductPricingHost"></div>
       <section id="productDbListPanel" class="panel d-none">
         <div class="result-header"><h2 class="result-title">전체 제품DB 관리</h2><span id="productDbCount" class="result-count"></span></div>
@@ -85,14 +88,16 @@ export function renderPriceManagerView(root) {
   const editForm = get("#manualEditForm");
   pricingPanel = renderOrderProductPricingPanel(get("#orderProductPricingHost"), { onProductsChanged: reloadDatabase });
 
+  const cleanupBackup = renderProductPriceBackupPanel(get('#productPriceBackupHost'), { onMerged: async () => { await reloadDatabase(); await pricingPanel.refreshProductDatabase(); } });
+
   function showAlert(message, type = "info") { alertBox.textContent = message; alertBox.className = `alert-box is-${type}`; }
   function formatImportedAt(value) { return value ? new Date(value).toLocaleString("ko-KR") : ""; }
 
   function renderStatus() {
     if (!metadata) {
-      status.textContent = "제품DB가 등록되지 않았습니다.";
+      status.textContent = products.length ? `회원2가 제품 ${products.length.toLocaleString("ko-KR")}개 (등록 파일 정보 없음)` : "제품DB가 등록되지 않았습니다.";
       uploadBtn.textContent = "제품DB 업로드";
-      listPanel.classList.toggle("d-none", !manualProducts.length);
+      listPanel.classList.toggle("d-none", !products.length && !manualProducts.length);
       return;
     }
     status.replaceChildren();
@@ -160,7 +165,7 @@ export function renderPriceManagerView(root) {
     metadata = loaded.metadata;
     if (!alive) return;
     renderStatus();
-    if (metadata || manualProducts.length) renderProducts();
+    if (products.length || metadata || manualProducts.length) renderProducts();
   }
 
   function updateEditPreview() {
@@ -248,5 +253,5 @@ export function renderPriceManagerView(root) {
   get("#backHomeBtn")?.addEventListener("click", () => go("/"));
   get("#themeToggle")?.addEventListener("click", () => { const nextTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", nextTheme); try { localStorage.setItem("oce-theme", nextTheme); } catch (_) { /* ignore */ } });
   reloadDatabase().catch((error) => { console.error("[product-price] load:", error); showAlert("저장된 제품DB를 불러오지 못했습니다.", "error"); });
-  return () => { alive = false; pricingPanel?.cleanup(); };
+  return () => { alive = false; cleanupBackup(); pricingPanel?.cleanup(); };
 }
