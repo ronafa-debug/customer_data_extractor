@@ -6,7 +6,6 @@ import { renderHomeView } from "./views/HomeView.js";
 import { renderOrderExtractorView } from "./views/OrderExtractorView.js";
 import { renderProductExtractorView } from "./views/ProductExtractorView.js";
 import { renderPriceManagerView } from "./views/PriceManagerView.js";
-import { renderNewPriceManagerView } from "./views/NewPriceManagerView.js";
 import { renderLabView } from "./views/LabView.js";
 
 const THEME_KEY = "oce-theme";
@@ -60,7 +59,10 @@ function main() {
     },
     "/new-price": {
       title: "OCR-제품가격관리",
-      render: (el) => renderNewPriceManagerView(el),
+      render: async (el) => {
+        const { renderNewPriceManagerView } = await import("./views/NewPriceManagerView.js");
+        return renderNewPriceManagerView(el);
+      },
     },
   });
 

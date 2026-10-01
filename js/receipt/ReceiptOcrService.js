@@ -1,4 +1,4 @@
-import Tesseract from "../../node_modules/tesseract.js/dist/tesseract.esm.min.js";
+import Tesseract from "https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js";
 import { parseReceiptItems } from "./ReceiptItemParser.js";
 import { parseBlocksLayout, parseTsvLayout } from "./ReceiptOcrLayout.js";
 
@@ -91,7 +91,7 @@ export async function preprocessReceiptForOcr(blob, { variant = "contrast" } = {
 /** @param {{onProgress?:(progress:{status:string,progress:number})=>void}} [options] */
 export async function createReceiptOcrSession({ onProgress } = {}) {
   const worker = await createWorker(["kor", "eng"], undefined, {
-    workerPath: "/node_modules/tesseract.js/dist/worker.min.js",
+    workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/worker.min.js",
     logger: (message) => onProgress?.({ status: message.status, progress: message.progress || 0 }),
   });
   await worker.setParameters({
