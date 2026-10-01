@@ -7,6 +7,9 @@ import {
   normalizeOrderBatches,
   summarizeOrderProductDates,
 } from "../model/OrderBatch.js";
+import { toCustomerGroupingRow } from "../model/StandardOrderRow.js";
+import { groupCustomers } from "../utils/GroupCustomer.js";
+import { selectNewOrderRows } from "./OrderDeduplicationService.js";
 
 const DB_NAME = "dauto-order-history";
 const DB_VERSION = 1;
@@ -75,6 +78,40 @@ export async function saveOrderBatch(customers, now = new Date(), orderRows = []
   const batch = createOrderBatch(customers, now, undefined, orderRows);
   await withStore("readwrite", (store) => store.add(batch));
   return batch;
+}
+
+/**
+ * 기존 전체 batch와 같은 transaction 안에서 중복을 판정하고 신규 행만 저장한다.
+ * @param {object[]} orderRows
+ * @param {Date} [now]
+ */
+export async function saveNewOrderRows(orderRows, now = new Date()) {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const request = store.getAll();
+      let result = null;
+      request.onsuccess = () => {
+        const selected = selectNewOrderRows(normalizeOrderBatches(request.result || []), orderRows);
+        if (!selected.newRows.length) {
+          result = { ...selected, batch: null, customerCount: 0 };
+          return;
+        }
+        const customers = groupCustomers(selected.newRows.map(toCustomerGroupingRow));
+        const batch = createOrderBatch(customers, now, undefined, selected.newRows);
+        store.add(batch);
+        result = { ...selected, batch, customerCount: batch.customerCount };
+      };
+      request.onerror = () => reject(request.error);
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(tx.error || request.error || new Error("주문내역을 저장하지 못했습니다."));
+      tx.onabort = () => reject(tx.error || new Error("주문 저장 작업이 취소되었습니다."));
+    });
+  } finally {
+    db.close();
+  }
 }
 
 /** @param {string} id */

@@ -96,6 +96,11 @@ export function createOrderBatch(
     customers: snapshots,
     customerCount: snapshots.length,
     orderProducts: mergeOrderProducts(orderRows),
+    orderIdentityKeys: Array.from(new Set(
+      (Array.isArray(orderRows) ? orderRows : [])
+        .map((row) => String(row?.orderIdentityKey || "").trim())
+        .filter(Boolean)
+    )),
   };
 }
 
@@ -119,7 +124,12 @@ export function normalizeOrderBatch(value) {
     ? batch.customers.map(snapshotCustomer)
     : [];
   const orderProducts = mergeOrderProducts(Array.isArray(batch.orderProducts) ? batch.orderProducts : []);
-  return { id, dateKey, createdAt, customers, customerCount: customers.length, orderProducts };
+  const orderIdentityKeys = Array.from(new Set(
+    (Array.isArray(batch.orderIdentityKeys) ? batch.orderIdentityKeys : [])
+      .map((key) => String(key || "").trim())
+      .filter(Boolean)
+  ));
+  return { id, dateKey, createdAt, customers, customerCount: customers.length, orderProducts, orderIdentityKeys };
 }
 
 /**

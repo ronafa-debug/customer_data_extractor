@@ -12,7 +12,8 @@ import { NaverParser } from "../js/order/parser/NaverParser.js";
 import { ParserFactory } from "../js/order/parser/ParserFactory.js";
 import { ERROR_MESSAGE } from "../js/order/constants.js";
 import { Customer } from "../js/order/model/Customer.js";
-import { makePlatformProductKey, mergeOrderProducts } from "../js/order/model/StandardOrderRow.js";
+import { createStandardOrderRow, makeOrderIdentityKey, makePlatformProductKey, mergeOrderProducts } from "../js/order/model/StandardOrderRow.js";
+import { selectNewOrderRows } from "../js/order/services/OrderDeduplicationService.js";
 import { isDoorDropOnlyMessage } from "../js/order/utils/DoorDropMessage.js";
 import {
   isReceiptCandidateGeometry,
@@ -483,6 +484,40 @@ assertEq(naverResult.orderRows[0].platformProductId, "12504797072", "네이버 �
 assertEq(naverResult.orderRows[0].platformOptionId, "OPT-160", "네이버 옵션관리코드 보존");
 assertEq(naverResult.orderRows[0].quantity, 5, "네이버 원본 row 수량 보존");
 
+console.log("\n=== 주문 identity 및 중복 판정 ===");
+assertEq(naverResult.orderRows[0].orderIdentityKey, "naver::2024001", "네이버 상품주문번호 identity");
+assertEq(coupangResult.orderRows[0].orderIdentityKey, "coupang::1::900100::700100", "쿠팡 주문·상품·옵션 identity");
+assertEq(
+  makeOrderIdentityKey({ platform: "coupang", orderId: "1", platformProductId: "900100", platformOptionId: "700100" }),
+  coupangResult.orderRows[0].orderIdentityKey,
+  "같은 주문행은 같은 identity"
+);
+assertEq(coupangResult.orderRows[1].orderIdentityKey, "coupang::2::900100::700100", "같은 고객 재주문은 다른 identity");
+assertEq(
+  makeOrderIdentityKey({ platform: "coupang", orderId: "1", platformProductId: "900100", platformOptionId: "DIFFERENT" }),
+  "coupang::1::900100::DIFFERENT",
+  "같은 주문번호의 다른 상품행 identity 분리"
+);
+assertEq(
+  makeOrderIdentityKey({ platform: "naver", productOrderId: "2024001", customerName: "다른 고객" }),
+  naverResult.orderRows[0].orderIdentityKey,
+  "identity는 고객 개인정보와 무관"
+);
+assertEq(makeOrderIdentityKey({ platform: "naver", platformProductId: "12504797072" }), "", "주문 고유번호 없는 행은 추정하지 않음");
+assertEq(makeOrderIdentityKey({ platform: "coupang", orderId: "1" }), "", "쿠팡 상품 식별정보 없는 행은 추정하지 않음");
+const identityRows = ["A", "B", "C", "D", "E"].map((id) => ({ orderIdentityKey: `naver::${id}` }));
+const identityBatch = { orderIdentityKeys: identityRows.map((row) => row.orderIdentityKey) };
+const fullyDuplicate = selectNewOrderRows([identityBatch], identityRows);
+assertEq(fullyDuplicate.newRows.length, 0, "완전 중복 파일 신규 0");
+assertEq(fullyDuplicate.duplicateCount, 5, "완전 중복 5건 제외");
+const partlyDuplicate = selectNewOrderRows([identityBatch], ["D", "E", "F", "G", "H"].map((id) => ({ orderIdentityKey: `naver::${id}` })));
+assertEq(partlyDuplicate.newRows.map((row) => row.orderIdentityKey).join(","), "naver::F,naver::G,naver::H", "부분 중복 신규 행만 선택");
+assertEq(partlyDuplicate.duplicateCount, 2, "부분 중복 2건 제외");
+const withinFile = selectNewOrderRows([], [{ orderIdentityKey: "naver::A" }, { orderIdentityKey: "naver::A" }]);
+assertEq(withinFile.newRows.length, 1, "동일 파일 내부 identity 중복 제거");
+assertEq(selectNewOrderRows([{ customers: [] }], [{ orderIdentityKey: "naver::A" }]).newRows.length, 1, "legacy batch는 보수적으로 신규 처리");
+assertEq(selectNewOrderRows([], [{ orderIdentityKey: "" }, { orderIdentityKey: "" }]).newRows.length, 2, "identity 없는 행은 삭제하지 않음");
+
 console.log("\n=== 표준 플랫폼 상품 key 및 snapshot ===");
 assertEq(makePlatformProductKey({ platform: "coupang", platformProductId: "900100", platformOptionId: "700100" }), "coupang::900100::700100", "쿠팡 상품·옵션 key");
 assertEq(makePlatformProductKey({ platform: "naver", platformProductId: "12504797072", platformOptionId: "" }), "naver::12504797072", "네이버 상품 key");
@@ -769,12 +804,14 @@ const batchWithProducts = createOrderBatch(
   [...coupangResult.orderRows, naverResult.orderRows[0]]
 );
 assertEq(batchWithProducts.orderProducts.length, 2, "OrderBatch에 플랫폼 상품 snapshot 저장");
+assertEq(batchWithProducts.orderIdentityKeys.length, 3, "OrderBatch에 주문 identity 저장");
 assertEq(batchWithProducts.orderProducts[0].quantity, 3, "OrderBatch 동일 상품 수량 합산 저장");
-assert(batchWithProducts.orderProducts.every((item) => !("phone" in item) && !("address" in item)), "OrderBatch 상품 snapshot 개인정보 없음");
+assert(batchWithProducts.orderProducts.every((item) => !("phone" in item) && !("address" in item) && !("orderIdentityKey" in item)), "OrderBatch 상품 snapshot 개인정보·주문 identity 중복 없음");
 const restoredProductBatch = normalizeOrderBatches(JSON.parse(JSON.stringify([batchWithProducts])))[0];
 assertEq(restoredProductBatch.orderProducts.length, 2, "OrderBatch 직렬화 후 상품 snapshot 복원");
 const restoredLegacyBatch = normalizeOrderBatches([{ id: "legacy", dateKey: "2026-09-28", createdAt: "2026-09-28T00:00:00.000Z", customers: [] }])[0];
 assertEq(restoredLegacyBatch.orderProducts.length, 0, "과거 orderProducts 없는 batch 복원");
+assertEq(restoredLegacyBatch.orderIdentityKeys.length, 0, "과거 identity 없는 batch 호환");
 
 const pricingProduct = {
   platform: "coupang",

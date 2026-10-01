@@ -97,6 +97,7 @@ export class NaverParser extends BaseParser {
       const platformProductId = cols.productId >= 0 ? this.cell(row[cols.productId]) : "";
       const platformOptionId = cols.optionId >= 0 ? this.cell(row[cols.optionId]) : "";
       const quantity = cols.qty >= 0 ? this.parseQuantity(row[cols.qty]) : 1;
+      const productOrderId = cols.productOrderId >= 0 ? this.cell(row[cols.productOrderId]) : "";
 
       if (!name && !productName) continue;
 
@@ -113,6 +114,7 @@ export class NaverParser extends BaseParser {
         zipcode,
         deliveryMessage,
         quantity,
+        productOrderId,
       }));
     }
 
@@ -169,6 +171,7 @@ export class NaverParser extends BaseParser {
     );
 
     return {
+      productOrderId: this.findColumnIndex(headerRow, ["상품주문번호"]),
       name: this.findColumnIndex(headerRow, [
         "수취인명",
         "수취인",

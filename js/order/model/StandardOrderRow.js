@@ -11,6 +11,26 @@ function normalizeKeyText(value) {
 }
 
 /**
+ * 플랫폼 주문행의 안정적인 식별값을 만든다. 고객 개인정보는 사용하지 않는다.
+ * 네이버는 상품주문번호, 쿠팡은 주문번호와 상품·옵션 식별자를 사용한다.
+ * @param {{platform?:unknown,productOrderId?:unknown,orderId?:unknown,platformProductId?:unknown,platformOptionId?:unknown,rawProductName?:unknown,rawOptionName?:unknown}} value
+ */
+export function makeOrderIdentityKey(value) {
+  const platform = orderCellText(value?.platform).toLocaleLowerCase("en-US");
+  const productOrderId = orderCellText(value?.productOrderId);
+  const orderId = orderCellText(value?.orderId);
+  if (platform === "naver" && productOrderId) return `naver::${productOrderId}`;
+  if (platform !== "coupang" || !orderId) return "";
+  const productId = orderCellText(value?.platformProductId);
+  const optionId = orderCellText(value?.platformOptionId);
+  const rawProductName = normalizeKeyText(value?.rawProductName);
+  const rawOptionName = normalizeKeyText(value?.rawOptionName);
+  const itemIdentity = [productId, optionId].filter(Boolean).join("::") ||
+    (rawProductName || rawOptionName ? `name::${rawProductName}::${rawOptionName}` : "");
+  return itemIdentity ? `coupang::${orderId}::${itemIdentity}` : "";
+}
+
+/**
  * @param {object} value
  * @returns {{platform:string,displayProductName:string,rawProductName:string,rawOptionName:string,platformProductId:string,platformOptionId:string,quantity:number,customerName:string,phone:string,address:string,zipcode:string,deliveryMessage:string}}
  */
@@ -18,7 +38,7 @@ export function createStandardOrderRow(value = {}) {
   const rawProductName = orderCellText(value.rawProductName);
   const displaySource = orderCellText(value.displayProductName || rawProductName);
   const quantityValue = Number(value.quantity);
-  return {
+  const row = {
     platform: orderCellText(value.platform).toLocaleLowerCase("en-US"),
     displayProductName: extractProductName(displaySource),
     rawProductName,
@@ -32,6 +52,7 @@ export function createStandardOrderRow(value = {}) {
     zipcode: orderCellText(value.zipcode),
     deliveryMessage: orderCellText(value.deliveryMessage),
   };
+  return { ...row, orderIdentityKey: makeOrderIdentityKey({ ...value, ...row }) };
 }
 
 /** @param {ReturnType<typeof createStandardOrderRow>} row */

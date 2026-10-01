@@ -99,6 +99,7 @@ export class CoupangParser extends BaseParser {
       const platformProductId = cols.productId >= 0 ? this.cell(row[cols.productId]) : "";
       const platformOptionId = cols.optionId >= 0 ? this.cell(row[cols.optionId]) : "";
       const quantity = cols.qty >= 0 ? this.parseQuantity(row[cols.qty]) : 1;
+      const orderId = cols.orderId >= 0 ? this.cell(row[cols.orderId]) : "";
 
       if (!name && !displayProductName) continue;
 
@@ -115,6 +116,7 @@ export class CoupangParser extends BaseParser {
         zipcode,
         deliveryMessage,
         quantity,
+        orderId,
       }));
     }
 
@@ -162,6 +164,7 @@ export class CoupangParser extends BaseParser {
     );
 
     return {
+      orderId: this.findColumnIndex(headerRow, ["주문번호"]),
       name: this.findColumnIndex(headerRow, [
         "수취인이름",
         "수취인 이름",

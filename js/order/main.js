@@ -28,7 +28,7 @@ import {
   deleteOrderCustomer,
   deleteOrderDate,
   loadOrderBatches,
-  saveOrderBatch,
+  saveNewOrderRows,
 } from "./services/OrderHistoryStore.js";
 import {
   formatOrderDate,
@@ -411,12 +411,19 @@ export function mountOrderExtractor(root) {
     state.saving = true;
     updateSaveButton();
     try {
-      const batch = await saveOrderBatch(state.customers, new Date(), state.orderRows);
+      const result = await saveNewOrderRows(state.orderRows, new Date());
       await reloadHistory();
-      renderer.showAlert(
-        `✓ ${formatOrderDate(batch.dateKey)} 주문내역에 고객 ${batch.customerCount}명을 저장했습니다.`,
-        "success"
-      );
+      if (!result.batch) {
+        renderer.showAlert(
+          `저장 결과 — 추출 주문 ${result.totalCount}건 · 신규 주문 0건 · 중복 제외 ${result.duplicateCount}건\n이미 저장된 주문내역입니다. 새로 저장할 주문이 없습니다.`,
+          "info"
+        );
+      } else {
+        renderer.showAlert(
+          `저장 결과 — 추출 주문 ${result.totalCount}건 · 신규 주문 ${result.newRows.length}건 · 중복 제외 ${result.duplicateCount}건\n신규 주문 ${result.newRows.length}건을 저장했습니다.${result.duplicateCount ? ` 중복 주문 ${result.duplicateCount}건은 제외했습니다.` : ""}`,
+          "success"
+        );
+      }
     } catch (err) {
       console.error("[order] history save:", err);
       renderer.showAlert(
